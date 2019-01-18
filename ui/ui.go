@@ -15,9 +15,20 @@ func Interact() {
 	defer rpio.Close()
 	p := rpio.Pin(4)
 	p.Output()
-	for i := 0; i < 10; i++ {
+
+	push := rpio.Pin(26)
+	push.PullUp()
+	push.Detect(rpio.FallEdge)
+	defer push.Detect(rpio.NoEdge)
+
+	count := 0
+	for {
+		if !push.EdgeDetected() {
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+		count++
 		p.Toggle()
-		fmt.Println("Blinky blinky")
-		time.Sleep(2 * time.Second)
+		fmt.Println("I see pressed buttons! ", count)
 	}
 }
