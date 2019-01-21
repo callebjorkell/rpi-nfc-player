@@ -2,33 +2,37 @@ package ui
 
 import (
 	"fmt"
-	"github.com/stianeikeland/go-rpio/v4"
 	"os"
-	"time"
+	"periph.io/x/periph/conn/gpio"
+	"periph.io/x/periph/conn/gpio/gpioreg"
+	"periph.io/x/periph/host"
 )
 
-func Interact() {
-	if err := rpio.Open(); err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-	defer rpio.Close()
-	p := rpio.Pin(4)
-	p.Output()
+func handleErr(err error) {
+	fmt.Println(err)
+	os.Exit(1)
+}
 
-	push := rpio.Pin(26)
-	push.PullUp()
-	push.Detect(rpio.FallEdge)
-	defer push.Detect(rpio.NoEdge)
+func Interact() {
+	if _, err := host.Init(); err != nil {
+		handleErr(err)
+	}
+	fmt.Println(gpioreg.All())
+	button := gpioreg.ByName("GPIO26")
+	if err := button.In(gpio.PullUp, gpio.FallingEdge); err != nil {
+		handleErr(err)
+	}
+
+	led := gpioreg.ByName("GPIO4")
 
 	count := 0
 	for {
-		if !push.EdgeDetected() {
-			time.Sleep(100 * time.Millisecond)
+		if !button.WaitForEdge(-1) {
 			continue
 		}
+		fmt.Println("Button was: ", button.Read())
 		count++
-		p.Toggle()
+		led.Out(!led.Read())
 		fmt.Println("I see pressed buttons! ", count)
 	}
 }
