@@ -1,6 +1,6 @@
 package main
 
-import "github.com/callebjorkell/nfc-player/nfc"
+import "github.com/callebjorkell/rpi-nfc-player/nfc"
 
 func main() {
 	//s, err := sonos.New("Guest Room")

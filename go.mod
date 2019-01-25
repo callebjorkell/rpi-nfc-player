@@ -1,4 +1,4 @@
-module github.com/callebjorkell/nfc-player
+module github.com/callebjorkell/rpi-nfc-player
 
 require (
 	github.com/djthorpe/gopi v1.0.52
