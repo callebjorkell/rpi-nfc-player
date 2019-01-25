@@ -1,9 +1,6 @@
 package main
 
-import (
-	"github.com/callebjorkell/nfc-player/label"
-	"os"
-)
+import "github.com/callebjorkell/nfc-player/nfc"
 
 func main() {
 	//s, err := sonos.New("Guest Room")
@@ -14,12 +11,14 @@ func main() {
 	//log.Println(s.Name(), "found")
 	//s.PlayDeezer("tr%3A63534071")
 
-	f, err := os.Create("penis.png")
-	if err != nil {
-		panic(err)
-	}
-	defer f.Close()
+	//f, err := os.Create("penis.png")
+	//if err != nil {
+	//	panic(err)
+	//}
+	//defer f.Close()
 
-	label.CreateLabel("14290022", f)
+	//label.CreateLabel("14290022", f)
+
 	// ui.Interact()
+	nfc.ReadCard()
 }
