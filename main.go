@@ -1,6 +1,9 @@
 package main
 
-import "github.com/callebjorkell/rpi-nfc-player/nfc"
+import (
+	"github.com/callebjorkell/rpi-nfc-player/nfc"
+	"log"
+)
 
 func main() {
 	//s, err := sonos.New("Guest Room")
@@ -20,5 +23,10 @@ func main() {
 	//label.CreateLabel("14290022", f)
 
 	// ui.Interact()
-	nfc.ReadCard()
+	uuid, err := nfc.ReadCardID()
+	if err != nil {
+		log.Fatal("shit.", err)
+	}
+	log.Println("ID: ", string(uuid))
+	//nfc.ReadCard()
 }
