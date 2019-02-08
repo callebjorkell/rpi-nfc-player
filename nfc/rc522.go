@@ -8,7 +8,8 @@ import (
 	"periph.io/x/periph/host/rpi"
 )
 
-// The MFRC522 spec can be found here: https://www.nxp.com/docs/en/data-sheet/MFRC522.pdf
+// MFRC522 spec can be found here: https://www.nxp.com/docs/en/data-sheet/MFRC522.pdf
+// MIFARE Ultralight C spec: https://www.nxp.com/docs/en/data-sheet/MF0ICU2.pdf
 
 func init() {
 	// init periph
