@@ -1,8 +1,4 @@
-package nfc
-
-import (
-	"encoding/binary"
-)
+package sonos
 
 type TrackLocation int
 type TrackType int
@@ -11,14 +7,13 @@ const (
 	Deezer TrackLocation = 0
 	Local  TrackLocation = 1
 )
+
 const (
 	Music     TrackType = 0
 	AudioBook TrackType = 1
 )
 
-var order = binary.BigEndian
-
-type Card struct {
+type Playlist struct {
 	// The ID of the card itself
 	ID int
 	// Tracks is the collection of tracks that should be played when this card is detected.
@@ -39,7 +34,7 @@ type Track struct {
 	ID string `json:"id"`
 }
 
-type State struct {
+type PlaylistState struct {
 	// CurrentTrack is the index of the track in the tracks array of the card.
 	CurrentTrack int `json:"current_track"`
 	// CurrentPosition is the position in seconds in the current track.

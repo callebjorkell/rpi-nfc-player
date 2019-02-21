@@ -17,6 +17,7 @@ github.com/jdevelop/golang-rpi-extras v0.0.0-20181010003844-c75e8edb0d6f h1:X9pt
 github.com/jdevelop/golang-rpi-extras v0.0.0-20181010003844-c75e8edb0d6f/go.mod h1:km5kp2Pmt5ixHsg+Q1wlfbXQ+0mpAnqQ5DsrZ+ynSUA=
 github.com/jdevelop/gpio v0.0.0-20180116031910-0e2cc992019a h1:Nuj/bvGNRFW0Ppumzic7hkbc5JrOmTS6a0ppWVYDZW0=
 github.com/jdevelop/gpio v0.0.0-20180116031910-0e2cc992019a/go.mod h1:W5ppyqXVm+ExtycefUIIedmFXcESacoKEZYTXaYeRBY=
+github.com/konsorten/go-windows-terminal-sequences v1.0.1 h1:mweAR1A6xJ3oS2pRaGiHgQ4OO8tzTaLawm8vnODuwDk=
 github.com/konsorten/go-windows-terminal-sequences v1.0.1/go.mod h1:T0+1ngSBFLxvqU3pZ+m/2kptfBszLMUkC4ZK/EgS/cQ=
 github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646 h1:zYyBkD/k9seD2A7fsi6Oo2LfFZAehjjQMERAvZLEDnQ=
 github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646/go.mod h1:jpp1/29i3P1S/RLdc7JQKbRpFeM1dOBd8T9ki5s+AY8=
