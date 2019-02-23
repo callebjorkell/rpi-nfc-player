@@ -1,8 +1,9 @@
 package main
 
 import (
+	"github.com/callebjorkell/rpi-nfc-player/label"
 	"github.com/callebjorkell/rpi-nfc-player/sonos"
-	"log"
+	"os"
 )
 
 func makeTrack(id string) sonos.Track {
@@ -15,25 +16,25 @@ func makeTrack(id string) sonos.Track {
 }
 
 func main() {
-	s, err := sonos.New("Guest Room")
-	if err != nil {
-		log.Fatal(err)
-	}
+	//s, err := sonos.New("Guest Room")
+	//if err != nil {
+	//	log.Fatal(err)
+	//}
 
-	log.Println(s.Name(), "found")
-
-	s.SetPlaylist(sonos.Playlist{
-		ID:    123456,
-		State: nil,
-		Tracks: []sonos.Track{
-			makeTrack("tr%3A63534071"),
-			makeTrack("tr%3A404209842"),
-			makeTrack("tr%3A404209862"),
-			makeTrack("tr%3A404209892"),
-		},
-	})
-
-	s.Play()
+	//log.Println(s.Name(), "found")
+	//
+	//s.SetPlaylist(sonos.Playlist{
+	//	ID:    123456,
+	//	State: nil,
+	//	Tracks: []sonos.Track{
+	//		makeTrack("tr%3A63534071"),
+	//		makeTrack("tr%3A404209842"),
+	//		makeTrack("tr%3A404209862"),
+	//		makeTrack("tr%3A404209892"),
+	//	},
+	//})
+	//
+	//s.Play()
 	//time.Sleep(2 * time.Second)
 	//stat, err := s.MediaInfo()
 	//fmt.Printf("1: %v\n", stat)
@@ -52,13 +53,17 @@ func main() {
 	//
 	//s.Pause()
 
-	//f, err := os.Create("penis.png")
-	//if err != nil {
-	//	panic(err)
-	//}
-	//defer f.Close()
 
-	//label.CreateLabel("14290022", f)
+
+	f, err := os.Create("label.png")
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
+
+	if err := label.CreateLabel("11428738", f); err != nil {
+		panic(err)
+	}
 
 	// ui.Interact()
 	//uuid, err := nfc.ReadCardID()

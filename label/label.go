@@ -4,12 +4,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/fogleman/gg"
+	"github.com/nfnt/resize"
 	"image"
 	"io"
 	"io/ioutil"
+	"math/rand"
 	"net/http"
+	"os"
 	"strings"
-	"github.com/nfnt/resize"
+	"time"
 )
 
 // image size of 50x81.6mm (85.60 mm × 53.98 with 2mm margin on each side) at 600 DPI
@@ -17,10 +20,21 @@ import (
 
 const height = 1928
 const width = 1181
-const artSize = 900
+const artSize = 755
+const strokeSize = 4
 
 var uriBase = "https://api.deezer.com/album"
 var fontFile = "/usr/share/fonts/truetype/msttcorefonts/Comic_Sans_MS_Bold.ttf"
+
+var colors = []string{
+	"#0048BA",
+	"#D3212D",
+	"#32CD32",
+	"#F4C2C2",
+	"#8A2BE2",
+	"#FF7E00",
+	"#FDEE00",
+}
 
 type content struct {
 	Cover  string `json:"cover_xl"`
@@ -28,6 +42,10 @@ type content struct {
 		Name string `json:"name"`
 	} `json:"artist"`
 	Title string `json:"title"`
+}
+
+func init() {
+	rand.Seed(time.Now().Unix())
 }
 
 func CreateLabel(albumId string, out io.Writer) error {
@@ -45,16 +63,25 @@ func CreateLabel(albumId string, out io.Writer) error {
 
 	scaled := resize.Resize(artSize, 0, *img, resize.Lanczos3)
 	l.SetRGB(1, 1, 1)
-	l.Fill()
+	l.Clear()
+
 	origin := width / 2
 	l.DrawImageAnchored(scaled, origin, origin, 0.5, 0.5)
-	l.SetRGB(0, 0, 0)
 
-	if err := renderString(l, strings.ToUpper(c.Artist.Name), 112, 1300); err != nil {
+	frame, err := getFrame()
+	if err != nil {
 		return err
 	}
-	l.SetRGB(0.4, 0.4, 0.4)
-	if err := renderString(l, strings.ToUpper(c.Title), 72, 1550); err != nil {
+	l.DrawImage(frame, 0, 0)
+
+	col := colors[rand.Int()%len(colors)]
+	l.SetHexColor(col)
+	if err := renderString(l, strings.ToUpper(c.Title), 96, 1250); err != nil {
+		return err
+	}
+
+	l.SetHexColor(col + "60")
+	if err := renderString(l, strings.ToUpper(c.Artist.Name), 64, 1700); err != nil {
 		return err
 	}
 
@@ -64,14 +91,46 @@ func CreateLabel(albumId string, out io.Writer) error {
 	return nil
 }
 
+func getFrame() (image.Image, error) {
+	const frames = 7
+	frameName := fmt.Sprintf("img/frame%d.png", rand.Int()%frames)
+	f, err := os.Open(frameName)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	img, _, err := image.Decode(f)
+	return img, err
+}
+
 func renderString(c *gg.Context, s string, size, y float64) error {
 	if err := c.LoadFontFace(fontFile, size); err != nil {
 		return fmt.Errorf("could not load the font: %v", err.Error())
 	}
-	lines := c.WordWrap(s, width - (width/10))
+	lines := c.WordWrap(s, width-(width/10))
 	for i, line := range lines {
-		c.DrawStringAnchored(line, float64(width/2), y + float64(i) * size * 1.2, 0.5, 0.5)
+		c.Push()
+		w := float64(width / 2)
+		h := y + float64(i)*size*1.2
+
+		c.SetRGB(0.2, 0.2, 0.2)
+		for dy := -strokeSize; dy <= strokeSize; dy++ {
+			for dx := -strokeSize; dx <= strokeSize; dx++ {
+				if dx*dx+dy*dy >= strokeSize*strokeSize {
+					// give it rounded corners
+					continue
+				}
+				x := w + float64(dx)
+				y := h + float64(dy)
+				c.DrawStringAnchored(line, x, y, 0.5, 0.5)
+			}
+		}
+		c.SetRGB(1, 1, 1)
+		c.DrawStringAnchored(line, w, h, 0.5, 0.5)
+		c.Pop()
+		c.DrawStringAnchored(line, w, h, 0.5, 0.5)
 	}
+
 	return nil
 }
 
