@@ -7,8 +7,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"log"
-	"os"
 	"time"
 
 	"github.com/ecc1/spi"
@@ -19,31 +17,28 @@ import (
 )
 
 type RFID struct {
-	ResetPin      gpio.Pin
-	IrqPin        gpio.Pin
-	Authenticated bool
-	antennaGain   int
-	MaxSpeedHz    int
-	spiDev        *spi.Device
-	stop          chan interface{}
+	ResetPin    gpio.Pin
+	IrqPin      gpio.Pin
+	antennaGain int
+	MaxSpeedHz  int
+	spiDev      *spi.Device
+	stop        chan interface{}
 }
 
+func init() {
+	logrus.SetLevel(logrus.InfoLevel)
+}
 
-func ReadCardID() (string, error) {
-	logrus.SetLevel(logrus.DebugLevel)
-	log.SetOutput(os.Stdout)
-	rfid, err := MakeRFID(0, 0, 1000000, 22, 18)
-	if err != nil {
-		log.Fatal(err)
+func (rfid *RFID) ReadCardID() (string, error) {
+	rfid.Init()
+	if _, err := rfid.Request(); err != nil {
+		return "", err
 	}
-
-	//rfid.Wait()
-	bits, err := rfid.Request()
-	fmt.Printf("RFID REQ: %x\n", bits)
 	data, err := rfid.AntiColl()
-	fmt.Printf("RFID ANTICOLL: %x\n", data)
-
-	return hex.EncodeToString(data), err
+	if err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(data), nil
 }
 
 func MakeRFID(busId, deviceId, maxSpeed, resetPin, irqPin int) (device *RFID, err error) {
@@ -212,7 +207,6 @@ func (r *RFID) SetAntennaGain(gain int) {
 }
 
 func (r *RFID) Reset() (err error) {
-	r.Authenticated = false
 	err = r.devWrite(commands.CommandReg, commands.PCD_RESETPHASE)
 	return
 }

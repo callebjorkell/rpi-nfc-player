@@ -3,6 +3,7 @@ package nfc
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/callebjorkell/rpi-nfc-player/sonos"
 	"github.com/tidwall/buntdb"
 )
 
@@ -14,7 +15,7 @@ func (db *DB) Close() error {
 	return db.instance.Close()
 }
 
-func (db *DB) StoreCard(c Card) error {
+func (db *DB) StoreCard(c sonos.Playlist) error {
 	return db.instance.Update(func(tx *buntdb.Tx) error {
 		data, err := json.Marshal(c)
 		if err != nil {
@@ -27,8 +28,8 @@ func (db *DB) StoreCard(c Card) error {
 	})
 }
 
-func (db *DB) ReadCard(id int) (Card, error) {
-	var c Card
+func (db *DB) ReadCard(id int) (sonos.Playlist, error) {
+	var c sonos.Playlist
 	err := db.instance.View(func(tx *buntdb.Tx) error {
 		s, err := tx.Get(getCardKey(id))
 		if err != nil {
@@ -45,8 +46,6 @@ func (db *DB) DeleteCard(id int) error {
 		return err
 	})
 }
-
-
 
 func getCardKey(id int) string {
 	return fmt.Sprintf("card:%v", id)
