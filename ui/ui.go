@@ -6,6 +6,7 @@ import (
 	"periph.io/x/periph/conn/gpio"
 	"periph.io/x/periph/conn/gpio/gpioreg"
 	"periph.io/x/periph/host"
+	"time"
 )
 
 func handleErr(err error) {
@@ -22,17 +23,8 @@ func Interact() {
 	if _, err := host.Init(); err != nil {
 		handleErr(err)
 	}
-	fmt.Println(gpioreg.All())
 	red := gpioreg.ByName("GPIO21")
-	if err := red.In(gpio.PullUp, gpio.BothEdges); err != nil {
-		handleErr(err)
-	}
-
 	blue := gpioreg.ByName("GPIO20")
-	if err := blue.In(gpio.PullUp, gpio.BothEdges); err != nil {
-		handleErr(err)
-	}
-
 	led := gpioreg.ByName("GPIO4")
 
 	c := make(chan buttonEvent, 10)
@@ -49,15 +41,28 @@ func Interact() {
 
 func handleButton(b gpio.PinIO, c chan buttonEvent) {
 	fmt.Println("Handling button ", b.Name())
+	if err := b.In(gpio.PullUp, gpio.BothEdges); err != nil {
+		handleErr(err)
+	}
+	last := b.Read()
 	for {
+		// read and debounce
 		if !b.WaitForEdge(-1) {
 			continue
 		}
+
 		l := b.Read()
-		e := buttonEvent{
-			pressed: l == gpio.Low,
-			name:    b.Name(),
+		if l == last {
+			continue
 		}
-		c <- e
+
+		time.Sleep(50 * time.Millisecond)
+		if l == b.Read() {
+			last = l
+			c <- buttonEvent{
+				pressed: l == gpio.Low,
+				name:    b.Name(),
+			}
+		}
 	}
 }
