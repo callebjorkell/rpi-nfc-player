@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/callebjorkell/rpi-nfc-player/nfc"
 	"github.com/callebjorkell/rpi-nfc-player/sonos"
+	"github.com/callebjorkell/rpi-nfc-player/ui"
 	"log"
 	"os"
 	"os/signal"
@@ -67,7 +68,7 @@ func main() {
 	//	panic(err)
 	//}
 
-	//ui.Interact()
+	ui.Interact()
 	rfid, err := nfc.MakeRFID(0, 0, 1000000, 22, 18)
 	if err != nil {
 		log.Fatal(err)

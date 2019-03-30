@@ -13,26 +13,51 @@ func handleErr(err error) {
 	os.Exit(1)
 }
 
+type buttonEvent struct {
+	pressed bool
+	name    string
+}
+
 func Interact() {
 	if _, err := host.Init(); err != nil {
 		handleErr(err)
 	}
 	fmt.Println(gpioreg.All())
-	button := gpioreg.ByName("GPIO26")
-	if err := button.In(gpio.PullUp, gpio.FallingEdge); err != nil {
+	red := gpioreg.ByName("GPIO21")
+	if err := red.In(gpio.PullUp, gpio.BothEdges); err != nil {
+		handleErr(err)
+	}
+
+	blue := gpioreg.ByName("GPIO20")
+	if err := blue.In(gpio.PullUp, gpio.BothEdges); err != nil {
 		handleErr(err)
 	}
 
 	led := gpioreg.ByName("GPIO4")
 
-	count := 0
+	c := make(chan buttonEvent, 10)
+	go handleButton(red, c)
+	go handleButton(blue, c)
 	for {
-		if !button.WaitForEdge(-1) {
+		select {
+		case e := <-c:
+			led.Out(gpio.Level(e.pressed))
+			fmt.Printf("I see button events! %v\n", e)
+		}
+	}
+}
+
+func handleButton(b gpio.PinIO, c chan buttonEvent) {
+	fmt.Println("Handling button ", b.Name())
+	for {
+		if !b.WaitForEdge(-1) {
 			continue
 		}
-		fmt.Println("Button was: ", button.Read())
-		count++
-		led.Out(!led.Read())
-		fmt.Println("I see pressed buttons! ", count)
+		l := b.Read()
+		e := buttonEvent{
+			pressed: l == gpio.Low,
+			name:    b.Name(),
+		}
+		c <- e
 	}
 }
