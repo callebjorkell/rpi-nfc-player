@@ -435,7 +435,7 @@ func (r *RFID) AntiColl() ([]byte, error) {
 	}
 
 	copy(uid, backData[1:4])
-	logrus.Debug("UID currently %v", hex.EncodeToString(uid))
+	logrus.Debugf("UID currently %v", hex.EncodeToString(uid))
 	logrus.Debug("cascade l2 required!")
 	cmd := []byte{0x93, 0x70, backData[0], backData[1], backData[2], backData[3], backData[4]}
 	cascadeCRC, err := r.CRC(cmd)

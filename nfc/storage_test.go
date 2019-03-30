@@ -1,6 +1,7 @@
 package nfc
 
 import (
+	"github.com/callebjorkell/rpi-nfc-player/sonos"
 	"github.com/stretchr/testify/assert"
 	"math/rand"
 	"testing"
@@ -12,9 +13,9 @@ func TestReadWriteCard(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	c := Card{
+	c := sonos.Playlist{
 		ID: rand.Int(),
-		Tracks: []Track{
+		Tracks: []sonos.Track{
 			{
 				ID:       "abeautifulid",
 				Location: 1,
