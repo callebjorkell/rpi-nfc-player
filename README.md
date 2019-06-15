@@ -1,4 +1,4 @@
-#NFC player
+# NFC player
 
 This is a piece of software intended to be used in a raspberry pi with a RFID reader attached,
 to be used for playing music on a sonos speaker, streaming from deezer.
