@@ -16,6 +16,8 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+var NoCardErr = errors.New("no card detected")
+
 type RFID struct {
 	ResetPin    gpio.Pin
 	IrqPin      gpio.Pin
@@ -284,7 +286,6 @@ func (r *RFID) cardWrite(command byte, data []byte) (backData []byte, backLength
 	}
 
 	if n&irqEn&0x01 == 1 {
-		logrus.Error("E1")
 		err = errors.New("IRQ error")
 		return
 	}
@@ -336,9 +337,9 @@ func (r *RFID) Request() (backBits int, err error) {
 	}
 
 	_, backBits, err = r.cardWrite(commands.PCD_TRANSCEIVE, []byte{0x26}[:])
-
-	logrus.Info(err, backBits)
-
+	if err != nil {
+		return -1, NoCardErr
+	}
 	if backBits != 0x10 {
 		err = errors.New(fmt.Sprintf("wrong number of bits %d", backBits))
 	}

@@ -28,7 +28,29 @@ func (db *DB) StoreCard(c sonos.Playlist) error {
 	})
 }
 
-func (db *DB) ReadCard(id int) (sonos.Playlist, error) {
+func (db *DB) ReadAll() (*[]sonos.Playlist, error) {
+	var cards []sonos.Playlist
+	err := db.instance.View(func(tx *buntdb.Tx) error {
+		var shitHappened error
+		err := tx.Ascend("", func(key, value string) bool {
+			var c sonos.Playlist
+			shitHappened = json.Unmarshal([]byte(value), &c)
+			if shitHappened != nil {
+				return false
+			}
+
+			cards = append(cards, c)
+			return true
+		})
+		if err != nil {
+			return err
+		}
+		return shitHappened
+	})
+	return &cards, err
+}
+
+func (db *DB) ReadCard(id string) (sonos.Playlist, error) {
 	var c sonos.Playlist
 	err := db.instance.View(func(tx *buntdb.Tx) error {
 		s, err := tx.Get(getCardKey(id))
@@ -40,21 +62,32 @@ func (db *DB) ReadCard(id int) (sonos.Playlist, error) {
 	return c, err
 }
 
-func (db *DB) DeleteCard(id int) error {
+func (db *DB) DeleteCard(id string) error {
 	return db.instance.Update(func(tx *buntdb.Tx) error {
 		_, err := tx.Delete(getCardKey(id))
 		return err
 	})
 }
 
-func getCardKey(id int) string {
+func getCardKey(id string) string {
 	return fmt.Sprintf("card:%v", id)
 }
 
-func NewDB() (*DB, error) {
+// Get a DB, panicking on any error
+func GetDB() *DB {
 	db, err := buntdb.Open("tracks.db")
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
-	return &DB{instance: db}, nil
+	conf := buntdb.Config{}
+	err = db.ReadConfig(&conf)
+	if err != nil {
+		panic(err)
+	}
+	conf.SyncPolicy = buntdb.Always
+	err = db.SetConfig(conf)
+	if err != nil {
+		panic(err)
+	}
+	return &DB{instance: db}
 }

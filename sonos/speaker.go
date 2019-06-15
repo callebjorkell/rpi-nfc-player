@@ -72,7 +72,7 @@ func (s *SonosSpeaker) SetPlaylist(playlist Playlist) {
 	const cSize = 16
 
 	for i := 0; i < pLen; i += cSize {
-		l := i+cSize
+		l := i + cSize
 		if l > pLen {
 			l = pLen
 		}

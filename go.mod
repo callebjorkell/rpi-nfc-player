@@ -1,6 +1,8 @@
 module github.com/callebjorkell/rpi-nfc-player
 
 require (
+	github.com/alecthomas/template v0.0.0-20160405071501-a0175ee3bccc // indirect
+	github.com/alecthomas/units v0.0.0-20151022065526-2efee857e7cf // indirect
 	github.com/ecc1/gpio v0.0.0-20171107174639-450ac9ea6df7 // indirect
 	github.com/ecc1/spi v0.0.0-20180427171038-91ea03fbebdc
 	github.com/fogleman/gg v1.2.0
@@ -20,5 +22,6 @@ require (
 	github.com/tidwall/tinyqueue v0.0.0-20180302190814-1e39f5511563 // indirect
 	golang.org/x/image v0.0.0-20190118043309-183bebdce1b2 // indirect
 	golang.org/x/net v0.0.0-20190110200230-915654e7eabc // indirect
+	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	periph.io/x/periph v3.4.0+incompatible
 )

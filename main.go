@@ -1,26 +1,224 @@
 package main
 
 import (
+	"fmt"
+	"github.com/callebjorkell/rpi-nfc-player/deezer"
 	"github.com/callebjorkell/rpi-nfc-player/nfc"
 	"github.com/callebjorkell/rpi-nfc-player/sonos"
 	"github.com/callebjorkell/rpi-nfc-player/ui"
-	"log"
+	log "github.com/sirupsen/logrus"
+	"gopkg.in/alecthomas/kingpin.v2"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 )
 
-func makeTrack(id string) sonos.Track {
-	return sonos.Track{
-		ID:       id,
-		Type:     sonos.Music,
-		Location: sonos.Deezer,
-		Volume:   100,
+var db = nfc.GetDB()
+
+var (
+	app   = kingpin.New("nfc-player", "Music player that plays deezer playlists on a sonos speakes with the help of NFC cards, a Raspberry Pi and some buttons.")
+	start = app.Command("start", "Start the music player and start listening for NFC cards.")
+
+	add         = app.Command("add", "Construct and add a new playlist to a card.")
+	playlist    = add.Command("playlist", "Add a deezer playlist.")
+	playlistId  = playlist.Arg("id", "The ID of the album that should be added.").Required().Uint32()
+	album       = add.Command("album", "Add a deezer album.")
+	albumId     = album.Arg("id", "The ID of the album that should be added.").Required().Uint32()
+	albumCardId = album.Flag("cardId", "Manually specify the card id to be used.").String()
+
+	dump       = app.Command("dump", "Read a card and dump all the available information onto standard out.")
+	dumpCardId = dump.Flag("cardId", "Manually specify the card id to be used.").String()
+	dumpList   = dump.Flag("list", "Dump a short list of all the cards in the database").Bool()
+
+	search       = app.Command("search", "Search for albums on deezer")
+	searchString = search.Arg("query", "The string to search on.").Required().String()
+
+	label        = app.Command("label", "Create a label for a card.")
+	labelAlbumId = label.Flag("id", "The id of the album that should be created. If not provided, a card will be requested.").Uint32()
+	labelCardId  = label.Flag("cardId", "Manually specify the card that the label should be printed for").String()
+)
+
+func main() {
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		select {
+		case <-signalChan:
+			os.Exit(0)
+		}
+	}()
+
+	switch kingpin.MustParse(app.Parse(os.Args[1:])) {
+	case start.FullCommand():
+		startServer()
+	case album.FullCommand():
+		addAlbum(*albumId)
+	case playlist.FullCommand():
+		addPlaylist(*playlistId)
+	case dump.FullCommand():
+		if *dumpList == true {
+			dumpAll()
+		} else {
+			dumpCard(*dumpCardId)
+		}
+	case search.FullCommand():
+		searchAlbum()
+	case label.FullCommand():
+		createLabel()
+	default:
+		kingpin.FatalUsage("Unrecognized command")
 	}
 }
 
-func main() {
+func dumpAll() {
+	c, err := db.ReadAll()
+	if err != nil {
+		panic(err)
+	}
+
+	if len(*c) > 0 {
+		fmt.Println("        ID │   AlbumId   │ PlaylistId │ Tracks ")
+		fmt.Println("───────────┼─────────────┼────────────┼────────")
+	} else {
+		fmt.Println("No cards found in the database...")
+	}
+	for _, card := range *c {
+		fmt.Printf("%10v │ %11v │ %10v │ %4v \n", card.ID, *card.AlbumID, card.PlaylistID, len(card.Tracks))
+	}
+}
+
+func dumpCard(cardId string) {
+	if cardId == "" {
+		log.Error("No card specified")
+		return
+	}
+
+	p, err := db.ReadCard(cardId)
+	if err != nil {
+		log.Error(err)
+		return
+	}
+	fmt.Println(p.String())
+}
+
+func addPlaylist(id uint32) {
+
+}
+
+func addAlbum(id uint32) {
+	a, err := deezer.AlbumInfo(fmt.Sprint(id))
+	if err != nil {
+		log.Error(err)
+		return
+	}
+
+	var cardId string
+	if albumCardId != nil {
+		cardId = *albumCardId
+	}
+	p := sonos.FromAlbum(a, cardId)
+
+	db.StoreCard(*p)
+}
+
+func createLabel() {
+	id := getAlbumId(*labelAlbumId, *labelCardId)
+
+	generateLabel(id)
+}
+
+func getAlbumId(givenAlbumId uint32, cardId string) uint32 {
+	if givenAlbumId > 0 {
+		return givenAlbumId
+	}
+	if cardId != "" {
+		card, err := db.ReadCard(cardId)
+		if err == nil {
+			if card.AlbumID != nil && *card.AlbumID > 0 {
+				return uint32(*card.AlbumID)
+			}
+		}
+		log.Error("Couldn't get a card with id ", cardId)
+	}
+
+	panic("implement this")
+	// TODO: read a card to figure out what is what.
+}
+
+func searchAlbum() {
+	r, err := deezer.AlbumSearch(*searchString)
+	if err != nil {
+		log.Error(err)
+		return
+	}
+
+	if len(r.Data) > 0 {
+		if len(r.Data) < r.Total {
+			fmt.Printf("Too many matches (%v). Only showing the first %v.\n\n", r.Total, len(r.Data))
+		}
+		fmt.Println("        ID │ Artist - Title")
+		fmt.Println("───────────┼────────────────────")
+		for _, v := range r.Data {
+			fmt.Printf("%10v │ %v - %v\n", v.Id, checkLength(v.Artist.Name, 50), checkLength(v.Title, 75))
+
+		}
+	} else {
+		fmt.Println("No matches. Try a different query string.")
+	}
+}
+
+func checkLength(s string, l int) string {
+	if len(s) > l {
+		return s[:l] + "…"
+	}
+	return s
+}
+
+func generateLabel(id uint32) {
+	f, err := os.Create("label.png")
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
+
+	if err := deezer.CreateLabel(fmt.Sprintf("%d", id), f); err != nil {
+		panic(err)
+	}
+}
+
+type CardState int
+
+const (
+	Activated   CardState = 0
+	Deactivated CardState = 1
+)
+
+type Event struct {
+	CardID string
+	State  CardState
+}
+
+func startServer() {
+	ui.Interact()
+	events := cardChannel()
+
+	for {
+		card, open := <-events
+		if !open {
+			return
+		}
+
+		if card.State == Activated {
+			fmt.Printf("Card %v activated\n", card.CardID)
+		} else {
+			fmt.Println("Card removed...")
+		}
+	}
+}
+
+func cardChannel() <-chan Event {
 	//s, err := sonos.New("Guest Room")
 	//if err != nil {
 	//	log.Fatal(err)
@@ -58,39 +256,80 @@ func main() {
 	//
 	//s.Pause()
 
-	//f, err := os.Create("label.png")
-	//if err != nil {
-	//	panic(err)
-	//}
-	//defer f.Close()
-	//
-	//if err := label.CreateLabel("11428738", f); err != nil {
-	//	panic(err)
-	//}
-
-	ui.Interact()
-	rfid, err := nfc.MakeRFID(0, 0, 1000000, 22, 18)
+	//ui.Interact()
+	reader, err := nfc.MakeRFID(0, 0, 1000000, 22, 18)
 	if err != nil {
 		log.Fatal(err)
 	}
+	events := make(chan Event)
+	ids := make(chan string, 1)
 	go func() {
+		defer close(ids)
+		lastId := ""
 		for {
-			uuid, err := rfid.ReadCardID()
+			id, err := reader.ReadCardID()
 			if err != nil {
-				log.Println("shit:", err)
-			} else {
-				log.Println("ID: ", string(uuid))
+				if err != nfc.NoCardErr {
+					log.Println("shit:", err)
+				}
+			}
+
+			if lastId != id {
+				lastId = id
+				ids <- id
 			}
 
 			time.Sleep(100 * time.Millisecond)
 		}
 	}()
+	go func() {
+		currentId := ""
+		for currentId == "" {
+			currentId = <-ids
+		}
+		//currentEvent := Event{State: Activated, CardID: currentId}
+		eventToSend := &Event{State: Activated, CardID: currentId}
+		//debounceIndex := 0
 
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
+		go func() {
+			for {
+				if eventToSend != nil {
+					select {
+					case events <- *eventToSend:
+						eventToSend = nil
+						log.Debugln("Sent an event")
+					case <-time.After(500 * time.Microsecond):
+						fmt.Print("*")
+					}
+				} else {
+					time.Sleep(500 * time.Millisecond)
+				}
+			}
+		}()
 
-	select {
-	case <-signalChan:
-		os.Exit(0)
-	}
+		for {
+			id, open := <-ids
+			if !open {
+				panic("Shit closed")
+			}
+			//if currentEvent.CardID == id {
+			//	debounceIndex = 0
+			//} else {
+			//	debounceIndex++
+			//}
+			//
+			//if debounceIndex > 10 {
+				if id == "" {
+					// There is no card currently
+					//currentEvent = Event{State: Deactivated, CardID: ""}
+					eventToSend = &Event{State: Deactivated, CardID: ""}
+				} else {
+					//currentEvent = Event{State: Activated, CardID: id}
+					eventToSend = &Event{State: Activated, CardID: id}
+				}
+
+			//}
+		}
+	}()
+	return events
 }

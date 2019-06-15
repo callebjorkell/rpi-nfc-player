@@ -1,5 +1,11 @@
 package sonos
 
+import (
+	"encoding/json"
+	"fmt"
+	"github.com/callebjorkell/rpi-nfc-player/deezer"
+)
+
 type TrackLocation int
 type TrackType int
 
@@ -15,12 +21,23 @@ const (
 
 type Playlist struct {
 	// The ID of the card itself
-	ID int
+	ID string `json:"id"`
+	// AlbumID contains the Deezer album ID if applicable
+	AlbumID *int `json:"albumId,omitempty"`
+	// PlaylistID contains the Deezer playlist ID if applicable
+	PlaylistID *int `json:"playlistId,omitempty"`
 	// Tracks is the collection of tracks that should be played when this card is detected.
 	Tracks []Track `json:"tracks"`
-	// State is the last seen state of the card. If none exists, the state will be nil. If the state is stale (card has
-	// changed since last state save) it will also be nilled.
-	State *State `json:"state,omitempty"`
+	// State is the last seen state of the card. If none exists, the state will be nil.
+	State *PlaylistState `json:"state,omitempty"`
+}
+
+func (p *Playlist) String() string {
+	b, err := json.MarshalIndent(p, "", "  ")
+	if err != nil {
+		return fmt.Sprint(p)
+	}
+	return string(b)
 }
 
 type Track struct {
@@ -41,14 +58,27 @@ type PlaylistState struct {
 	CurrentPosition int `json:"current_position"`
 }
 
-func (t Track) TrackLocation() TrackLocation {
-	return t.Location
+func FromAlbum(album *deezer.Album, cardId string) *Playlist {
+	var tracks []Track
+	for _, trackId := range album.Tracks() {
+		tracks = append(tracks, makeTrack(trackId))
+	}
+	var albumId int
+	albumId = album.Id
+	return &Playlist{
+		ID:         cardId,
+		AlbumID:    &albumId,
+		State:      nil,
+		Tracks:     tracks,
+		PlaylistID: nil,
+	}
 }
 
-func (t Track) TrackType() TrackType {
-	return t.Type
-}
-
-func (t Track) TrackVolume(base int) int {
-	return t.Volume * base / 100
+func makeTrack(id string) Track {
+	return Track{
+		ID:       fmt.Sprintf("%v%v", "tr%3A", id),
+		Type:     Music,
+		Location: Deezer,
+		Volume:   100,
+	}
 }

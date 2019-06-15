@@ -8,13 +8,10 @@ import (
 )
 
 func TestReadWriteCard(t *testing.T) {
-	db, err := NewDB()
-	if err != nil {
-		t.Fatal(err)
-	}
+	db := GetDB()
 
 	c := sonos.Playlist{
-		ID: rand.Int(),
+		ID: string(rand.Uint32()),
 		Tracks: []sonos.Track{
 			{
 				ID:       "abeautifulid",
@@ -25,7 +22,7 @@ func TestReadWriteCard(t *testing.T) {
 		},
 	}
 
-	if err := db.StoreCard(c); err != nil{
+	if err := db.StoreCard(c); err != nil {
 		t.Fatal(err)
 	}
 	defer db.DeleteCard(c.ID)

@@ -1,10 +1,12 @@
-package label
+package deezer
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/fogleman/gg"
 	"github.com/nfnt/resize"
+	"github.com/sirupsen/logrus"
 	"image"
 	"io"
 	"io/ioutil"
@@ -23,8 +25,10 @@ const width = 1181
 const artSize = 755
 const strokeSize = 4
 
-var uriBase = "https://api.deezer.com/album"
-var fontFile = "/usr/share/fonts/truetype/msttcorefonts/Comic_Sans_MS_Bold.ttf"
+const uriBase = "https://api.deezer.com/album"
+const fontFile = "/usr/share/fonts/truetype/msttcorefonts/Comic_Sans_MS_Bold.ttf"
+
+var defaultArt = getDefaultArt()
 
 var colors = []string{
 	"#0048BA",
@@ -36,16 +40,34 @@ var colors = []string{
 	"#FDEE00",
 }
 
-type content struct {
+type Album struct {
+	Id     int    `json:"id"`
 	Cover  string `json:"cover_xl"`
 	Artist struct {
 		Name string `json:"name"`
 	} `json:"artist"`
+	TrackList struct {
+		Data []struct {
+			Id int `json:"id"`
+		} `json:"data"`
+	} `json:"tracks"`
 	Title string `json:"title"`
+}
+
+func (a *Album) Tracks() []string {
+	var tracks []string
+	for _, value := range a.TrackList.Data {
+		tracks = append(tracks, fmt.Sprint(value.Id))
+	}
+	return tracks
 }
 
 func init() {
 	rand.Seed(time.Now().Unix())
+}
+
+func AlbumInfo(albumId string) (*Album, error) {
+	return getInfo(albumId)
 }
 
 func CreateLabel(albumId string, out io.Writer) error {
@@ -54,9 +76,12 @@ func CreateLabel(albumId string, out io.Writer) error {
 		return fmt.Errorf("could not fetch album info: %v", err.Error())
 	}
 
-	img, err := fetchAlbumArt(c.Cover)
-	if err != nil {
-		return fmt.Errorf("could not fetch album art: %v", err.Error())
+	img := defaultArt
+	if c.Cover != "" {
+		img, err = fetchAlbumArt(c.Cover)
+		if err != nil {
+			return fmt.Errorf("could not fetch album art: %v", err.Error())
+		}
 	}
 
 	l := gg.NewContext(width, height)
@@ -94,12 +119,25 @@ func CreateLabel(albumId string, out io.Writer) error {
 func getFrame() (image.Image, error) {
 	const frames = 7
 	frameName := fmt.Sprintf("img/frame%d.png", rand.Int()%frames)
-	f, err := os.Open(frameName)
+	return loadImage(frameName)
+}
+
+func getDefaultArt() *image.Image {
+	img, err := loadImage("img/defaultArt.png")
+	if err != nil {
+		logrus.Error("Could not find the default album art")
+	}
+	return &img
+}
+
+func loadImage(fileName string) (image.Image, error) {
+	f, err := os.Open(fileName)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
 	img, _, err := image.Decode(f)
+
 	return img, err
 }
 
@@ -134,7 +172,7 @@ func renderString(c *gg.Context, s string, size, y float64) error {
 	return nil
 }
 
-func getInfo(albumId string) (*content, error) {
+func getInfo(albumId string) (*Album, error) {
 	u := fmt.Sprintf("%s/%s", uriBase, albumId)
 	res, err := http.DefaultClient.Get(u)
 	if err != nil {
@@ -142,10 +180,13 @@ func getInfo(albumId string) (*content, error) {
 	}
 	defer res.Body.Close()
 
-	c := new(content)
+	c := new(Album)
 	body, _ := ioutil.ReadAll(res.Body)
 	if err := json.Unmarshal(body, &c); err != nil {
 		return nil, err
+	}
+	if c.Artist.Name == "" && c.Title == "" {
+		return c, errors.New("album info is empty")
 	}
 	return c, nil
 }
