@@ -5,7 +5,6 @@ import (
 	"github.com/callebjorkell/rpi-nfc-player/deezer"
 	"github.com/callebjorkell/rpi-nfc-player/nfc"
 	"github.com/callebjorkell/rpi-nfc-player/sonos"
-	"github.com/callebjorkell/rpi-nfc-player/ui"
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/alecthomas/kingpin.v2"
 	"os"
@@ -201,7 +200,7 @@ type Event struct {
 }
 
 func startServer() {
-	ui.Interact()
+	//ui.Interact()
 	events := cardChannel()
 
 	for {
@@ -261,74 +260,43 @@ func cardChannel() <-chan Event {
 	if err != nil {
 		log.Fatal(err)
 	}
-	events := make(chan Event)
-	ids := make(chan string, 1)
+	events := make(chan Event, 1)
 	go func() {
-		defer close(ids)
-		lastId := ""
+		defer close(events)
+		lastConfirmedId, lastSeenId := "", ""
+		debounceIndex := 0
 		for {
+			time.Sleep(100 * time.Millisecond)
+
 			id, err := reader.ReadCardID()
 			if err != nil {
 				if err != nfc.NoCardErr {
-					log.Println("shit:", err)
+					log.Debug(err)
 				}
 			}
-
-			if lastId != id {
-				lastId = id
-				ids <- id
+			
+			if lastSeenId != id {
+				lastSeenId = id
+				debounceIndex = 0
+				continue
 			}
 
-			time.Sleep(100 * time.Millisecond)
-		}
-	}()
-	go func() {
-		currentId := ""
-		for currentId == "" {
-			currentId = <-ids
-		}
-		//currentEvent := Event{State: Activated, CardID: currentId}
-		eventToSend := &Event{State: Activated, CardID: currentId}
-		//debounceIndex := 0
-
-		go func() {
-			for {
-				if eventToSend != nil {
-					select {
-					case events <- *eventToSend:
-						eventToSend = nil
-						log.Debugln("Sent an event")
-					case <-time.After(500 * time.Microsecond):
-						fmt.Print("*")
-					}
-				} else {
-					time.Sleep(500 * time.Millisecond)
-				}
+			if lastConfirmedId == id {
+				continue
 			}
-		}()
 
-		for {
-			id, open := <-ids
-			if !open {
-				panic("Shit closed")
-			}
-			//if currentEvent.CardID == id {
-			//	debounceIndex = 0
-			//} else {
-			//	debounceIndex++
-			//}
-			//
-			//if debounceIndex > 10 {
+			// debounce the card, in case we have half reads, or multiple cards
+			debounceIndex++
+			if debounceIndex >= 3 {
+				lastConfirmedId = id
 				if id == "" {
 					// There is no card currently
-					//currentEvent = Event{State: Deactivated, CardID: ""}
-					eventToSend = &Event{State: Deactivated, CardID: ""}
+					events <- Event{State: Deactivated, CardID: ""}
 				} else {
-					//currentEvent = Event{State: Activated, CardID: id}
-					eventToSend = &Event{State: Activated, CardID: id}
+					events <- Event{State: Activated, CardID: id}
 				}
+			}
 
-			//}
 		}
 	}()
 	return events
