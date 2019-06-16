@@ -54,8 +54,8 @@ type Track struct {
 type PlaylistState struct {
 	// CurrentTrack is the index of the track in the tracks array of the card.
 	CurrentTrack int `json:"current_track"`
-	// CurrentPosition is the position in seconds in the current track.
-	CurrentPosition int `json:"current_position"`
+	// CurrentPosition is the position in the current track.
+	CurrentPosition string `json:"current_position"`
 }
 
 func FromAlbum(album *deezer.Album, cardId string) *Playlist {

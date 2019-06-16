@@ -10,6 +10,7 @@ import (
 	"gopkg.in/alecthomas/kingpin.v2"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 )
@@ -94,13 +95,13 @@ func dumpAll() {
 	}
 
 	if len(*c) > 0 {
-		fmt.Println("        ID │   AlbumId   │ PlaylistId │ Tracks ")
-		fmt.Println("───────────┼─────────────┼────────────┼────────")
+		fmt.Println("            ID │   AlbumId   │ PlaylistId │ Tracks ")
+		fmt.Println("───────────────┼─────────────┼────────────┼────────")
 	} else {
 		fmt.Println("No cards found in the database...")
 	}
 	for _, card := range *c {
-		fmt.Printf("%10v │ %11v │ %10v │ %4v \n", card.ID, *card.AlbumID, card.PlaylistID, len(card.Tracks))
+		fmt.Printf("%14v │ %11v │ %10v │ %4v \n", card.ID, *card.AlbumID, card.PlaylistID, len(card.Tracks))
 	}
 }
 
@@ -173,10 +174,10 @@ func searchAlbum() {
 		if len(r.Data) < r.Total {
 			fmt.Printf("Too many matches (%v). Only showing the first %v.\n\n", r.Total, len(r.Data))
 		}
-		fmt.Println("        ID │ Artist - Title")
-		fmt.Println("───────────┼────────────────────")
+		fmt.Println("            ID │ Artist - Title")
+		fmt.Println("───────────────┼────────────────────")
 		for _, v := range r.Data {
-			fmt.Printf("%10v │ %v - %v\n", v.Id, checkLength(v.Artist.Name, 50), checkLength(v.Title, 75))
+			fmt.Printf("%14v │ %v - %v\n", v.Id, checkLength(v.Artist.Name, 50), checkLength(v.Title, 75))
 
 		}
 	} else {
@@ -263,6 +264,7 @@ func startServer() {
 	}()
 
 	events := cardChannel()
+	lastActive := ""
 	for {
 		card, open := <-events
 		if !open {
@@ -270,9 +272,12 @@ func startServer() {
 		}
 
 		if card.State == Activated {
-			fmt.Printf("Card %v activated\n", card.CardID)
+			log.Infof("Card %v activated\n", card.CardID)
 			led.Yellow()
 			play = true
+
+			// save this so that we can fetch it later and update the state
+			lastActive = card.CardID
 
 			p, err := db.ReadCard(card.CardID)
 			if err != nil {
@@ -286,9 +291,28 @@ func startServer() {
 			s.Play()
 
 			led.Green()
-
 		} else {
-			fmt.Println("Card removed...")
+			log.Infoln("Card removed...")
+			if state, err := s.MediaInfo(); err == nil {
+				if p, err := db.ReadCard(lastActive); err == nil {
+					i, err := strconv.Atoi(state.Track)
+					if err != nil {
+						log.Warnf("Could not parse current track: %v", err.Error())
+						i = 1
+					}
+
+					p.State = &sonos.PlaylistState{
+						CurrentTrack:    i,
+						CurrentPosition: state.RelTime,
+					}
+
+					if err := db.StoreCard(p); err != nil {
+						log.Warn("Could not update playlist state: ", err)
+					} else {
+						log.Debugf("Updated card %v with state %v", lastActive, p.State)
+					}
+				}
+			}
 			s.Pause()
 			led.Off()
 			play = false
@@ -308,44 +332,6 @@ func tigerCheck(tiger *ui.Tiger, led *ui.ColorLed) func() {
 }
 
 func cardChannel() <-chan Event {
-	//s, err := sonos.New("Guest Room")
-	//if err != nil {
-	//	log.Fatal(err)
-	//}
-
-	//log.Println(s.Name(), "found")
-	//
-	//s.SetPlaylist(sonos.Playlist{
-	//	ID:    123456,
-	//	State: nil,
-	//	Tracks: []sonos.Track{
-	//		makeTrack("tr%3A63534071"),
-	//		makeTrack("tr%3A404209842"),
-	//		makeTrack("tr%3A404209862"),
-	//		makeTrack("tr%3A404209892"),
-	//	},
-	//})
-	//
-	//s.Play()
-	//time.Sleep(2 * time.Second)
-	//stat, err := s.MediaInfo()
-	//fmt.Printf("1: %v\n", stat)
-	//
-	//s.Next()
-	//s.Next()
-	//time.Sleep(2 * time.Second)
-	//stat, err = s.MediaInfo()
-	//fmt.Printf("2: %v\n", stat)
-	//
-	//s.Previous()
-	//s.Play()
-	//time.Sleep(10 * time.Second)
-	//stat, err = s.MediaInfo()
-	//fmt.Printf("3: %v\n", stat)
-	//
-	//s.Pause()
-
-	//ui.Interact()
 	reader, err := nfc.MakeRFID(0, 0, 100000, 22, 18)
 	if err != nil {
 		log.Fatal(err)

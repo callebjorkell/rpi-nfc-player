@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/huin/goupnp"
 	"github.com/huin/goupnp/soap"
+	"github.com/sirupsen/logrus"
 	"log"
 	"strconv"
 	"strings"
@@ -80,8 +81,23 @@ func (s *SonosSpeaker) SetPlaylist(playlist Playlist) {
 	}
 
 	if playlist.State != nil {
-		panic("Implement this.")
+		logrus.Debugf("Resuming the previous state from track %v", playlist.State.CurrentTrack)
+		s.SetTrack(playlist.State.CurrentTrack)
 	}
+}
+
+func (s *SonosSpeaker) SetTrack(position int) {
+	in := struct {
+		InstanceID string
+		Unit       string
+		Target     string
+	}{
+		"0",
+		"TRACK_NR",
+		strconv.Itoa(position),
+	}
+
+	s.control.Action("Seek", in, nil)
 }
 
 // addChunk adds a chunk of tracks to the sonos speaker. Note that if this goes over 16 in size, there are probably going to be problems.
