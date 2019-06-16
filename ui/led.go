@@ -56,12 +56,12 @@ func (c *ColorLed) Off() {
 	c.b.Out(gpio.High)
 }
 
-func GetColorLED() ColorLed {
+func GetColorLED() *ColorLed {
 	redLED := gpioreg.ByName("GPIO6")
 	greenLED := gpioreg.ByName("GPIO5")
 	blueLED := gpioreg.ByName("GPIO13")
 
 	c := ColorLed{r: redLED, g: greenLED, b: blueLED}
 	c.Off()
-	return c
+	return &c
 }

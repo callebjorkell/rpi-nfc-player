@@ -27,12 +27,10 @@ type RFID struct {
 	stop        chan interface{}
 }
 
-func init() {
-	logrus.SetLevel(logrus.InfoLevel)
-}
-
 func (rfid *RFID) ReadCardID() (string, error) {
-	rfid.Init()
+	if err := rfid.Init(); err != nil {
+		return "", err
+	}
 	if _, err := rfid.Request(); err != nil {
 		return "", err
 	}
@@ -67,7 +65,7 @@ func MakeRFID(busId, deviceId, maxSpeed, resetPin, irqPin int) (device *RFID, er
 	dev := &RFID{
 		spiDev:      spiDev,
 		MaxSpeedHz:  maxSpeed,
-		antennaGain: 4,
+		antennaGain: 7,
 		stop:        make(chan interface{}, 1),
 	}
 
@@ -131,7 +129,6 @@ func (r *RFID) Init() (err error) {
 	if err != nil {
 		return
 	}
-	logrus.Debug("Init done")
 	return
 }
 
@@ -160,43 +157,31 @@ func printBytes(data []byte) (res string) {
 
 func (r *RFID) devWrite(address int, data byte) (err error) {
 	newData := [2]byte{(byte(address) << 1) & 0x7E, data}
-	readBuf, err := r.writeSpiData(newData[:])
-	if logrus.GetLevel() == logrus.DebugLevel {
-		newData[0] = newData[0] >> 1
-		logrus.Debug(">>" + printBytes(newData[:]) + " " + printBytes(readBuf))
-	}
+	_, err = r.writeSpiData(newData[:])
 	return
 }
 
 func (r *RFID) devRead(address int) (result byte, err error) {
 	data := [2]byte{((byte(address) << 1) & 0x7E) | 0x80, 0}
 	rb, err := r.writeSpiData(data[:])
-	if logrus.GetLevel() == logrus.DebugLevel {
-		data[0] = (data[0] >> 1) & 0x7f
-		logrus.Debug("<<" + printBytes(data[:]) + " " + printBytes(rb))
-	}
 	result = rb[1]
 	return
 }
 
 func (r *RFID) setBitmask(address, mask int) (err error) {
-	logrus.Debug("Set mask ", address, mask)
 	current, err := r.devRead(address)
 	if err != nil {
 		return
 	}
-	logrus.Debug("Set mask value ", address, current|byte(mask))
 	err = r.devWrite(address, current|byte(mask))
 	return
 }
 
 func (r *RFID) clearBitmask(address, mask int) (err error) {
-	logrus.Debug("Clear mask ", address, mask)
 	current, err := r.devRead(address)
 	if err != nil {
 		return
 	}
-	logrus.Debug("Set mask value ", address, current&^byte(mask))
 	err = r.devWrite(address, current&^byte(mask))
 	return
 
@@ -216,7 +201,6 @@ func (r *RFID) Reset() (err error) {
 func (r *RFID) SetAntenna(state bool) (err error) {
 	if state {
 		current, err := r.devRead(commands.TxControlReg)
-		logrus.Debug("Antenna", current)
 		if err != nil {
 			return err
 		}
@@ -395,6 +379,7 @@ interruptLoop:
 		case <-r.stop:
 			return errors.New("stop signal")
 		case _ = <-irqChannel:
+			logrus.Debugln("Interrupt!")
 			break interruptLoop
 		case <-time.After(100 * time.Millisecond):
 			// do nothing
@@ -426,8 +411,6 @@ func (r *RFID) AntiColl() ([]byte, error) {
 		crc = crc ^ v
 	}
 
-	logrus.Debug("Back data ", printBytes(backData), ", CRC ", printBytes([]byte{crc}))
-
 	if crc != backData[4] {
 		return nil, errors.New(fmt.Sprintf("CRC mismatch, expected %02x actual %02x", crc, backData[4]))
 	}
@@ -449,13 +432,11 @@ func (r *RFID) AntiColl() ([]byte, error) {
 	buf[7] = cascadeCRC[0]
 	buf[8] = cascadeCRC[1]
 
-	logrus.Debugf("writing data %v", hex.EncodeToString(buf))
 	backDataT, _, err := r.cardWrite(commands.PCD_TRANSCEIVE, buf)
 	if err != nil {
 		return nil, err
 	}
 
-	logrus.Debug(hex.EncodeToString(backDataT))
 	if backDataT[0] != 0x04 {
 		return nil, errors.New(fmt.Sprintf("Unexpected L2 Anticoll response: %02x", backDataT[0]))
 	}
@@ -481,6 +462,7 @@ func (r *RFID) AntiColl() ([]byte, error) {
 		return nil, errors.New(fmt.Sprintf("CRC mismatch, expected %02x actual %02x", crc, backData[4]))
 	}
 	copy(uid[3:], backData2[:5])
+	logrus.Debugf("Found uid %v", hex.EncodeToString(uid))
 	return uid, nil
 }
 

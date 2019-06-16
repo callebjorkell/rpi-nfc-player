@@ -18,6 +18,7 @@ var db = nfc.GetDB()
 
 var (
 	app   = kingpin.New("nfc-player", "Music player that plays deezer playlists on a sonos speakes with the help of NFC cards, a Raspberry Pi and some buttons.")
+	debug = app.Flag("debug", "Turn on debug logging.").Bool()
 	start = app.Command("start", "Start the music player and start listening for NFC cards.")
 
 	add         = app.Command("add", "Construct and add a new playlist to a card.")
@@ -50,7 +51,21 @@ func main() {
 		}
 	}()
 
-	switch kingpin.MustParse(app.Parse(os.Args[1:])) {
+	cmd, err := app.Parse(os.Args[1:])
+	if err != nil {
+		fmt.Printf("%v: Try --help\n", err.Error())
+		os.Exit(1)
+	}
+
+	log.SetFormatter(&log.TextFormatter{
+		TimestampFormat: "2006-01-02T15:04:05.000Z07:00",
+	})
+	if *debug {
+		log.Info("Enabling debug output...")
+		log.SetLevel(log.DebugLevel)
+	}
+
+	switch cmd {
 	case start.FullCommand():
 		startServer()
 	case album.FullCommand():
@@ -204,23 +219,42 @@ func startServer() {
 	tiger := ui.GetTiger()
 	buttons := ui.InitButtons()
 	led := ui.GetColorLED()
-
-	if ui.IsPressed(ui.TigerSwitch) {
-		log.Info("Tiger switched on already, enabling tiger.")
-		tiger.On()
+	s, err := sonos.New("Guest Room")
+	if err != nil {
+		log.Fatal(err)
 	}
+
+	checkTiger := tigerCheck(tiger, led)
+	checkTiger()
+	play := false
 
 	go func() {
 		for {
 			select {
-			case b := <-buttons:
-				if b.Button == ui.TigerSwitch {
+			case b, ok := <-buttons:
+				if !ok {
+					log.Error("Button channel has closed. Stopping event loop.")
+					return
+				}
+
+				switch b.Button {
+				case ui.TigerSwitch:
 					if b.Pressed {
-						tiger.On()
-						led.Red()
+						if !play {
+							tiger.On()
+							led.Red()
+						}
 					} else {
 						tiger.Off()
 						led.Off()
+					}
+				case ui.Red:
+					if b.Pressed && play {
+						s.Previous()
+					}
+				case ui.Blue:
+					if b.Pressed && play {
+						s.Next()
 					}
 				}
 				fmt.Println(b.String())
@@ -237,8 +271,38 @@ func startServer() {
 
 		if card.State == Activated {
 			fmt.Printf("Card %v activated\n", card.CardID)
+			led.Yellow()
+			play = true
+
+			p, err := db.ReadCard(card.CardID)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			s.SetPlaylist(p)
+			// apparently this returns before the player is ready
+			time.Sleep(500 * time.Millisecond)
+
+			s.Play()
+
+			led.Green()
+
 		} else {
 			fmt.Println("Card removed...")
+			s.Pause()
+			led.Off()
+			play = false
+			checkTiger()
+		}
+	}
+}
+
+func tigerCheck(tiger *ui.Tiger, led *ui.ColorLed) func() {
+	return func() {
+		if ui.IsPressed(ui.TigerSwitch) {
+			log.Info("Tiger switched on already, enabling tiger.")
+			led.Red()
+			tiger.On()
 		}
 	}
 }
@@ -282,24 +346,24 @@ func cardChannel() <-chan Event {
 	//s.Pause()
 
 	//ui.Interact()
-	reader, err := nfc.MakeRFID(0, 0, 1000000, 22, 18)
+	reader, err := nfc.MakeRFID(0, 0, 100000, 22, 18)
 	if err != nil {
 		log.Fatal(err)
 	}
-	events := make(chan Event, 1)
+	events := make(chan Event, 10)
 	go func() {
 		defer close(events)
 		lastConfirmedId, lastSeenId := "", ""
 		debounceIndex := 0
 		for {
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(150 * time.Millisecond)
 
 			id, err := reader.ReadCardID()
 			if err != nil {
-				if err != nfc.NoCardErr {
-					log.Debug(err)
-				}
+				log.Debugf("error when reading card ID: %v", err)
 			}
+
+			log.Debugf("ID: %v, lastSeen: %v, lastConfirmed: %v, debounce: %v", id, lastSeenId, lastConfirmedId, debounceIndex)
 
 			if lastSeenId != id {
 				lastSeenId = id
@@ -311,18 +375,26 @@ func cardChannel() <-chan Event {
 				continue
 			}
 
-			// debounce the card, in case we have half reads, or multiple cards
+			// debounce the card, in case we have half reads, or multiple cards. This means there is a slight lag to
+			// start playing, but it also means it's way more stable when it actually does...
 			debounceIndex++
-			if debounceIndex >= 3 {
-				lastConfirmedId = id
+			if debounceIndex >= 4 {
 				if id == "" {
 					// There is no card currently
+					log.Debugln("Sending deactivation event")
 					events <- Event{State: Deactivated, CardID: ""}
 				} else {
+					log.Debugf("Sending activation event for card %v", id)
 					events <- Event{State: Activated, CardID: id}
-				}
-			}
 
+					// there seems to be some issues with reading sometimes. Not sure why that would be, but here we
+					// sleep as an extra countermeasure against "bounce". Since a card was just added, we might
+					// as well let it get going before reading again.
+					time.Sleep(1000 * time.Millisecond)
+				}
+				lastConfirmedId = id
+				debounceIndex = 0
+			}
 		}
 	}()
 	return events
