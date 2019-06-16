@@ -6,7 +6,23 @@ import (
 	"periph.io/x/periph/conn/gpio"
 	"periph.io/x/periph/conn/gpio/gpioreg"
 	"periph.io/x/periph/host"
+	"sync"
 	"time"
+)
+
+func init() {
+	if _, err := host.Init(); err != nil {
+		handleErr(err)
+	}
+}
+
+var buttonStates [3]bool
+
+const (
+	redPin         = "GPIO21"
+	bluePin        = "GPIO20"
+	tigerSwitchPin = "GPIO16"
+	tigerPin       = "GPIO23"
 )
 
 func handleErr(err error) {
@@ -14,95 +30,89 @@ func handleErr(err error) {
 	os.Exit(1)
 }
 
-type buttonEvent struct {
-	pressed bool
-	name    string
+type ButtonEvent struct {
+	Pressed bool
+	Button  Button
 }
 
-func Interact() {
-	if _, err := host.Init(); err != nil {
-		handleErr(err)
+func (b ButtonEvent) String() string {
+	action := "pressed"
+	if !b.Pressed {
+		action = "released"
 	}
-	redButton := gpioreg.ByName("GPIO21")
-	blueButton := gpioreg.ByName("GPIO20")
-	tigerSwitch := gpioreg.ByName("GPIO16")
-
-	redLED := gpioreg.ByName("GPIO6")
-	greenLED := gpioreg.ByName("GPIO5")
-	blueLED := gpioreg.ByName("GPIO13")
-
-	go doRGB(redLED, greenLED, blueLED)
-	tiger := gpioreg.ByName("GPIO23")
-
-	c := make(chan buttonEvent, 10)
-	go handleButton(blueButton, c)
-	go triggerTiger(redButton, tiger)
-	go handleButton(tigerSwitch, c)
-	for {
-		select {
-		case e := <-c:
-			fmt.Printf("I see button events! %v\n", e)
-		}
-	}
+	return fmt.Sprintf("Button %v was %v", b.Button.String(), action)
 }
 
-func doRGB(r gpio.PinIO, g gpio.PinIO, b gpio.PinIO) {
-	leds := []gpio.PinIO{r,g,b}
-	index := 0
-	for _, l := range leds {
-		l.Out(gpio.High)
-	}
-	for {
-		leds[index].Out(gpio.Low)
-		fmt.Printf("%d ",index)
-		time.Sleep(time.Second)
-		leds[index].Out(gpio.High)
-
-		index++
-		index = index%3
-	}
+type Tiger struct {
+	pin gpio.PinIO
 }
 
-func triggerTiger(b gpio.PinIO, tiger gpio.PinIO) {
-	fmt.Println("Handling tiger button ", b.Name())
-	tiger.Out(gpio.Low)
-	if err := b.In(gpio.PullUp, gpio.BothEdges); err != nil {
-		handleErr(err)
-	}
-
-	last := b.Read()
-	for {
-		// read and debounce
-		if !b.WaitForEdge(-1) {
-			continue
-		}
-
-		l := b.Read()
-		if l == last {
-			continue
-		}
-
-		time.Sleep(50 * time.Millisecond)
-		if l == b.Read() {
-			last = l
-			if l != gpio.Low {
-				continue
-			}
-
-			fmt.Println("enabling tiger")
-			tiger.Out(gpio.Low)
-			time.Sleep(time.Second)
-			tiger.Out(gpio.High)
-		}
-	}
+func (t Tiger) On() {
+	t.pin.Out(gpio.Low)
 }
 
-func handleButton(b gpio.PinIO, c chan buttonEvent) {
+func (t Tiger) Off() {
+	t.pin.Out(gpio.High)
+}
+
+func GetTiger() *Tiger {
+	pin := gpioreg.ByName(tigerPin)
+	t := Tiger{pin: pin}
+	t.Off()
+
+	return &t
+}
+
+type Button int
+
+const (
+	Red         Button = 0
+	Blue        Button = 1
+	TigerSwitch Button = 2
+)
+
+func (b Button) String() string {
+	if b == Red {
+		return "red"
+	}
+	if b == Blue {
+		return "blue"
+	}
+	if b == TigerSwitch {
+		return "tiger switch"
+	}
+	return ""
+}
+
+func InitButtons() chan ButtonEvent {
+	redButton := gpioreg.ByName(redPin)
+	blueButton := gpioreg.ByName(bluePin)
+	tigerSwitch := gpioreg.ByName(tigerSwitchPin)
+
+	c := make(chan ButtonEvent, 10)
+	initialized := sync.WaitGroup{}
+	initialized.Add(3)
+	go handleButton(blueButton, Blue, c, &initialized)
+	go handleButton(redButton, Red, c, &initialized)
+	go handleButton(tigerSwitch, TigerSwitch, c, &initialized)
+	initialized.Wait()
+	return c
+}
+
+// IsPressed returns true if the button is currently pressed, and false otherwize
+func IsPressed(button Button) bool {
+	return buttonStates[button]
+}
+
+func handleButton(b gpio.PinIO, t Button, c chan ButtonEvent, initialized *sync.WaitGroup) {
 	fmt.Println("Handling button ", b.Name())
 	if err := b.In(gpio.PullUp, gpio.BothEdges); err != nil {
 		handleErr(err)
 	}
+
 	last := b.Read()
+	saveState(t, last)
+	initialized.Done()
 	for {
 		// read and debounce
 		if !b.WaitForEdge(-1) {
@@ -117,10 +127,16 @@ func handleButton(b gpio.PinIO, c chan buttonEvent) {
 		time.Sleep(50 * time.Millisecond)
 		if l == b.Read() {
 			last = l
-			c <- buttonEvent{
-				pressed: l == gpio.Low,
-				name:    b.Name(),
+			saveState(t, l)
+			c <- ButtonEvent{
+				Pressed: l == gpio.Low,
+				Button:  t,
 			}
 		}
 	}
+}
+
+func saveState(t Button, l gpio.Level) {
+	pressed := l == gpio.Low
+	buttonStates[t] = pressed
 }

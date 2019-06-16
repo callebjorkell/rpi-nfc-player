@@ -5,6 +5,7 @@ import (
 	"github.com/callebjorkell/rpi-nfc-player/deezer"
 	"github.com/callebjorkell/rpi-nfc-player/nfc"
 	"github.com/callebjorkell/rpi-nfc-player/sonos"
+	"github.com/callebjorkell/rpi-nfc-player/ui"
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/alecthomas/kingpin.v2"
 	"os"
@@ -200,9 +201,34 @@ type Event struct {
 }
 
 func startServer() {
-	//ui.Interact()
-	events := cardChannel()
+	tiger := ui.GetTiger()
+	buttons := ui.InitButtons()
+	led := ui.GetColorLED()
 
+	if ui.IsPressed(ui.TigerSwitch) {
+		log.Info("Tiger switched on already, enabling tiger.")
+		tiger.On()
+	}
+
+	go func() {
+		for {
+			select {
+			case b := <-buttons:
+				if b.Button == ui.TigerSwitch {
+					if b.Pressed {
+						tiger.On()
+						led.Red()
+					} else {
+						tiger.Off()
+						led.Off()
+					}
+				}
+				fmt.Println(b.String())
+			}
+		}
+	}()
+
+	events := cardChannel()
 	for {
 		card, open := <-events
 		if !open {
@@ -274,7 +300,7 @@ func cardChannel() <-chan Event {
 					log.Debug(err)
 				}
 			}
-			
+
 			if lastSeenId != id {
 				lastSeenId = id
 				debounceIndex = 0
