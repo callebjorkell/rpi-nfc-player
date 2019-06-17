@@ -7,42 +7,157 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
+	"sync"
 	"time"
 
 	"github.com/ecc1/spi"
 	"github.com/jdevelop/golang-rpi-extras/rf522/commands"
 	"github.com/jdevelop/gpio"
 	rpio "github.com/jdevelop/gpio/rpi"
-	"github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 )
 
 var NoCardErr = errors.New("no card detected")
+var stateLock sync.Mutex
+var active bool
 
-type RFID struct {
+type CardState int
+type CardEvent struct {
+	CardID string
+	State  CardState
+}
+
+const (
+	Activated   CardState = 0
+	Deactivated CardState = 1
+)
+
+type rfid struct {
 	ResetPin    gpio.Pin
-	IrqPin      gpio.Pin
 	antennaGain int
 	MaxSpeedHz  int
 	spiDev      *spi.Device
-	stop        chan interface{}
 }
 
-func (rfid *RFID) ReadCardID() (string, error) {
-	if err := rfid.Init(); err != nil {
+type CardReader interface {
+	io.Closer
+	Events() <-chan CardEvent
+}
+
+type cardReader struct {
+	events <-chan CardEvent
+	rfid   *rfid
+	stop   chan interface{}
+}
+
+func (c cardReader) Events() <-chan CardEvent {
+	return c.events
+}
+
+func (c cardReader) Close() error {
+	close(c.stop)
+	defer func() {
+		stateLock.Lock()
+		active = false
+		stateLock.Unlock()
+	}()
+	return c.rfid.Close()
+}
+
+func CreateReader() (CardReader, error) {
+	stateLock.Lock()
+	if active {
+		return nil, errors.New("reader already in use")
+	} else {
+		active = true
+	}
+	stateLock.Unlock()
+
+	// the IRQ pin is actually connected on the board, but I could never get it to work properly. So now we're
+	// polling instead. Might come back to it at some point if I feel like losing another couple of days.
+	reader, err := makeRFID(0, 0, 100000, 22, 18)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	events := make(chan CardEvent, 10)
+	c := cardReader{
+		rfid:   reader,
+		events: events,
+		stop:   make(chan interface{}),
+	}
+
+	go func() {
+		defer close(events)
+		lastConfirmedId, lastSeenId := "", ""
+		debounceIndex := 0
+		for {
+			select {
+			case <-c.stop:
+				log.Debugln("CardReader stopped. Returning.")
+				return
+			case <-time.After(150 * time.Millisecond):
+				// just do another loop
+			}
+
+			id, err := reader.readCardId()
+			if err != nil {
+				log.Debugf("error when reading card ID: %v", err)
+			}
+
+			log.Debugf("ID: %v, lastSeen: %v, lastConfirmed: %v, debounce: %v", id, lastSeenId, lastConfirmedId, debounceIndex)
+
+			if lastSeenId != id {
+				lastSeenId = id
+				debounceIndex = 0
+				continue
+			}
+
+			if lastConfirmedId == id {
+				continue
+			}
+
+			// debounce the card, in case we have half reads, or multiple cards. This means there is a slight lag to
+			// start playing, but it also means it's way more stable when it actually does...
+			debounceIndex++
+			if debounceIndex >= 4 {
+				if id == "" {
+					// There is no card currently
+					log.Debugln("Sending deactivation event")
+					events <- CardEvent{State: Deactivated, CardID: ""}
+				} else {
+					log.Debugf("Sending activation event for card %v", id)
+					events <- CardEvent{State: Activated, CardID: id}
+
+					// there seems to be some issues with reading sometimes. Not sure why that would be, but here we
+					// sleep as an extra countermeasure against "bounce". Since a card was just added, we might
+					// as well let it get going before reading again.
+					time.Sleep(1000 * time.Millisecond)
+				}
+				lastConfirmedId = id
+				debounceIndex = 0
+			}
+		}
+	}()
+	return c, nil
+}
+
+func (r *rfid) readCardId() (string, error) {
+	if err := r.init(); err != nil {
 		return "", err
 	}
-	if _, err := rfid.Request(); err != nil {
+	if _, err := r.request(); err != nil {
 		return "", err
 	}
-	data, err := rfid.AntiColl()
+	data, err := r.antiColl()
 	if err != nil {
 		return "", err
 	}
 	return hex.EncodeToString(data), nil
 }
 
-func MakeRFID(busId, deviceId, maxSpeed, resetPin, irqPin int) (device *RFID, err error) {
-
+func makeRFID(busId, deviceId, maxSpeed, resetPin, irqPin int) (device *rfid, err error) {
 	spiDev, err := spi.Open(fmt.Sprintf("/dev/spidev%d.%d", busId, deviceId), maxSpeed, 0)
 
 	if err != nil {
@@ -62,11 +177,10 @@ func MakeRFID(busId, deviceId, maxSpeed, resetPin, irqPin int) (device *RFID, er
 		return
 	}
 
-	dev := &RFID{
+	dev := &rfid{
 		spiDev:      spiDev,
 		MaxSpeedHz:  maxSpeed,
 		antennaGain: 7,
-		stop:        make(chan interface{}, 1),
 	}
 
 	pin, err := rpio.OpenPin(resetPin, gpio.ModeOutput)
@@ -82,18 +196,16 @@ func MakeRFID(busId, deviceId, maxSpeed, resetPin, irqPin int) (device *RFID, er
 		spiDev.Close()
 		return
 	}
-	dev.IrqPin = pin
-	dev.IrqPin.PullUp()
 
-	err = dev.Init()
+	err = dev.init()
 
 	device = dev
 
 	return
 }
 
-func (r *RFID) Init() (err error) {
-	err = r.Reset()
+func (r *rfid) init() (err error) {
+	err = r.reset()
 	if err != nil {
 		return
 	}
@@ -125,20 +237,18 @@ func (r *RFID) Init() (err error) {
 	if err != nil {
 		return
 	}
-	err = r.SetAntenna(true)
+	err = r.setAntenna(true)
 	if err != nil {
 		return
 	}
 	return
 }
 
-func (r *RFID) Close() error {
-	r.stop <- true
-	close(r.stop)
+func (r *rfid) Close() error {
 	return r.spiDev.Close()
 }
 
-func (r *RFID) writeSpiData(dataIn []byte) (out []byte, err error) {
+func (r *rfid) writeSpiData(dataIn []byte) (out []byte, err error) {
 	out = make([]byte, len(dataIn))
 	copy(out, dataIn)
 	err = r.spiDev.Transfer(out)
@@ -155,20 +265,20 @@ func printBytes(data []byte) (res string) {
 	return
 }
 
-func (r *RFID) devWrite(address int, data byte) (err error) {
+func (r *rfid) devWrite(address int, data byte) (err error) {
 	newData := [2]byte{(byte(address) << 1) & 0x7E, data}
 	_, err = r.writeSpiData(newData[:])
 	return
 }
 
-func (r *RFID) devRead(address int) (result byte, err error) {
+func (r *rfid) devRead(address int) (result byte, err error) {
 	data := [2]byte{((byte(address) << 1) & 0x7E) | 0x80, 0}
 	rb, err := r.writeSpiData(data[:])
 	result = rb[1]
 	return
 }
 
-func (r *RFID) setBitmask(address, mask int) (err error) {
+func (r *rfid) setBitmask(address, mask int) (err error) {
 	current, err := r.devRead(address)
 	if err != nil {
 		return
@@ -177,7 +287,7 @@ func (r *RFID) setBitmask(address, mask int) (err error) {
 	return
 }
 
-func (r *RFID) clearBitmask(address, mask int) (err error) {
+func (r *rfid) clearBitmask(address, mask int) (err error) {
 	current, err := r.devRead(address)
 	if err != nil {
 		return
@@ -187,18 +297,18 @@ func (r *RFID) clearBitmask(address, mask int) (err error) {
 
 }
 
-func (r *RFID) SetAntennaGain(gain int) {
+func (r *rfid) setAntennaGain(gain int) {
 	if 0 <= gain && gain <= 7 {
 		r.antennaGain = gain
 	}
 }
 
-func (r *RFID) Reset() (err error) {
+func (r *rfid) reset() (err error) {
 	err = r.devWrite(commands.CommandReg, commands.PCD_RESETPHASE)
 	return
 }
 
-func (r *RFID) SetAntenna(state bool) (err error) {
+func (r *rfid) setAntenna(state bool) (err error) {
 	if state {
 		current, err := r.devRead(commands.TxControlReg)
 		if err != nil {
@@ -213,7 +323,7 @@ func (r *RFID) SetAntenna(state bool) (err error) {
 	return
 }
 
-func (r *RFID) cardWrite(command byte, data []byte) (backData []byte, backLength int, err error) {
+func (r *rfid) cardWrite(command byte, data []byte) (backData []byte, backLength int, err error) {
 	backData = make([]byte, 0)
 	backLength = -1
 	irqEn := byte(0x00)
@@ -265,7 +375,7 @@ func (r *RFID) cardWrite(command byte, data []byte) (backData []byte, backLength
 
 	if d, err1 := r.devRead(commands.ErrorReg); err1 != nil || d&0x1B != 0 {
 		err = err1
-		logrus.Error("E2")
+		log.Error("E2")
 		return
 	}
 
@@ -313,7 +423,7 @@ func (r *RFID) cardWrite(command byte, data []byte) (backData []byte, backLength
 	return
 }
 
-func (r *RFID) Request() (backBits int, err error) {
+func (r *rfid) request() (backBits int, err error) {
 	backBits = 0
 	err = r.devWrite(commands.BitFramingReg, 0x07)
 	if err != nil {
@@ -331,64 +441,7 @@ func (r *RFID) Request() (backBits int, err error) {
 	return
 }
 
-func (r *RFID) Wait() (err error) {
-	irqChannel := make(chan bool)
-	r.IrqPin.BeginWatch(gpio.EdgeFalling, func() {
-		defer func() {
-			if recover() != nil {
-				err = errors.New("panic")
-			}
-		}()
-		irqChannel <- true
-	})
-
-	defer func() {
-		r.IrqPin.EndWatch()
-		close(irqChannel)
-	}()
-
-	err = r.Init()
-	if err != nil {
-		return
-	}
-	err = r.devWrite(commands.CommIrqReg, 0x00)
-	if err != nil {
-		return
-	}
-	err = r.devWrite(commands.CommIEnReg, 0xA0)
-	if err != nil {
-		return
-	}
-	logrus.SetLevel(logrus.ErrorLevel)
-
-interruptLoop:
-	for {
-		err = r.devWrite(commands.FIFODataReg, 0x26)
-		if err != nil {
-			return
-		}
-		err = r.devWrite(commands.CommandReg, 0x0C)
-		if err != nil {
-			return
-		}
-		err = r.devWrite(commands.BitFramingReg, 0x87)
-		if err != nil {
-			return
-		}
-		select {
-		case <-r.stop:
-			return errors.New("stop signal")
-		case _ = <-irqChannel:
-			logrus.Debugln("Interrupt!")
-			break interruptLoop
-		case <-time.After(100 * time.Millisecond):
-			// do nothing
-		}
-	}
-	return
-}
-
-func (r *RFID) AntiColl() ([]byte, error) {
+func (r *rfid) antiColl() ([]byte, error) {
 	var backData, backData2 []byte
 	var uid = make([]byte, 7) // used when the UID is a 7 byte UID.
 
@@ -397,7 +450,7 @@ func (r *RFID) AntiColl() ([]byte, error) {
 	backData, _, err = r.cardWrite(commands.PCD_TRANSCEIVE, []byte{0x93, 0x20}[:])
 
 	if err != nil {
-		logrus.Error("Card write ", err)
+		log.Error("Card write ", err)
 		return nil, err
 	}
 
@@ -419,12 +472,12 @@ func (r *RFID) AntiColl() ([]byte, error) {
 	}
 
 	copy(uid, backData[1:4])
-	logrus.Debugf("UID currently %v", hex.EncodeToString(uid))
-	logrus.Debug("cascade l2 required!")
+	log.Debugf("UID currently %v", hex.EncodeToString(uid))
+	log.Debug("cascade l2 required!")
 	cmd := []byte{0x93, 0x70, backData[0], backData[1], backData[2], backData[3], backData[4]}
-	cascadeCRC, err := r.CRC(cmd)
+	cascadeCRC, err := r.crc(cmd)
 	if err != nil {
-		logrus.Warn(err)
+		log.Warn(err)
 		return nil, err
 	}
 	buf := make([]byte, 9)
@@ -444,7 +497,7 @@ func (r *RFID) AntiColl() ([]byte, error) {
 	backData2, _, err = r.cardWrite(commands.PCD_TRANSCEIVE, []byte{0x95, 0x20}[:])
 
 	if err != nil {
-		logrus.Error("Card write ", err)
+		log.Error("Card write ", err)
 		return nil, err
 	}
 
@@ -457,16 +510,16 @@ func (r *RFID) AntiColl() ([]byte, error) {
 		crc = crc ^ v
 	}
 
-	logrus.Debug("Back data ", printBytes(backData2), ", CRC ", printBytes([]byte{crc}))
+	log.Debug("Back data ", printBytes(backData2), ", CRC ", printBytes([]byte{crc}))
 	if crc != backData2[4] {
 		return nil, errors.New(fmt.Sprintf("CRC mismatch, expected %02x actual %02x", crc, backData[4]))
 	}
 	copy(uid[3:], backData2[:5])
-	logrus.Debugf("Found uid %v", hex.EncodeToString(uid))
+	log.Debugf("Found uid %v", hex.EncodeToString(uid))
 	return uid, nil
 }
 
-func (r *RFID) CRC(inData []byte) (res []byte, err error) {
+func (r *rfid) crc(inData []byte) (res []byte, err error) {
 	res = []byte{0, 0}
 	err = r.clearBitmask(commands.DivIrqReg, 0x04)
 	if err != nil {
@@ -504,10 +557,5 @@ func (r *RFID) CRC(inData []byte) (res []byte, err error) {
 		return
 	}
 	res[1] = msb
-	return
-}
-
-func (r *RFID) StopCrypto() (err error) {
-	err = r.clearBitmask(commands.Status2Reg, 0x08)
 	return
 }

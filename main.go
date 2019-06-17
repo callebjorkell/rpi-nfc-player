@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"github.com/callebjorkell/rpi-nfc-player/deezer"
 	"github.com/callebjorkell/rpi-nfc-player/nfc"
@@ -23,11 +24,8 @@ var (
 	start = app.Command("start", "Start the music player and start listening for NFC cards.")
 
 	add         = app.Command("add", "Construct and add a new playlist to a card.")
-	playlist    = add.Command("playlist", "Add a deezer playlist.")
-	playlistId  = playlist.Arg("id", "The ID of the album that should be added.").Required().Uint32()
-	album       = add.Command("album", "Add a deezer album.")
-	albumId     = album.Arg("id", "The ID of the album that should be added.").Required().Uint32()
-	albumCardId = album.Flag("cardId", "Manually specify the card id to be used.").String()
+	albumId     = add.Arg("id", "The ID of the album that should be added.").Required().Uint32()
+	albumCardId = add.Flag("cardId", "Manually specify the card id to be used.").String()
 
 	dump       = app.Command("dump", "Read a card and dump all the available information onto standard out.")
 	dumpCardId = dump.Flag("cardId", "Manually specify the card id to be used.").String()
@@ -69,10 +67,8 @@ func main() {
 	switch cmd {
 	case start.FullCommand():
 		startServer()
-	case album.FullCommand():
+	case add.FullCommand():
 		addAlbum(*albumId)
-	case playlist.FullCommand():
-		addPlaylist(*playlistId)
 	case dump.FullCommand():
 		if *dumpList == true {
 			dumpAll()
@@ -107,8 +103,11 @@ func dumpAll() {
 
 func dumpCard(cardId string) {
 	if cardId == "" {
-		log.Error("No card specified")
-		return
+		id, err := readSingleCard()
+		if err != nil {
+			log.Fatal(err)
+		}
+		cardId = id
 	}
 
 	p, err := db.ReadCard(cardId)
@@ -119,10 +118,6 @@ func dumpCard(cardId string) {
 	fmt.Println(p.String())
 }
 
-func addPlaylist(id uint32) {
-
-}
-
 func addAlbum(id uint32) {
 	a, err := deezer.AlbumInfo(fmt.Sprint(id))
 	if err != nil {
@@ -131,8 +126,14 @@ func addAlbum(id uint32) {
 	}
 
 	var cardId string
-	if albumCardId != nil {
+	if *albumCardId != "" {
 		cardId = *albumCardId
+	} else {
+		id, err := readSingleCard()
+		if err != nil {
+			log.Fatal(err)
+		}
+		cardId = id
 	}
 	p := sonos.FromAlbum(a, cardId)
 
@@ -140,27 +141,56 @@ func addAlbum(id uint32) {
 }
 
 func createLabel() {
-	id := getAlbumId(*labelAlbumId, *labelCardId)
+	id := getLabelAlbumId(*labelAlbumId, *labelCardId)
 
 	generateLabel(id)
 }
 
-func getAlbumId(givenAlbumId uint32, cardId string) uint32 {
+func getLabelAlbumId(givenAlbumId uint32, cardId string) uint32 {
 	if givenAlbumId > 0 {
 		return givenAlbumId
 	}
-	if cardId != "" {
-		card, err := db.ReadCard(cardId)
-		if err == nil {
-			if card.AlbumID != nil && *card.AlbumID > 0 {
-				return uint32(*card.AlbumID)
-			}
+
+	if cardId == "" {
+		if read, err := readSingleCard(); err != nil {
+			log.Fatal(err)
+		} else {
+			cardId = read
 		}
-		log.Error("Couldn't get a card with id ", cardId)
 	}
 
-	panic("implement this")
-	// TODO: read a card to figure out what is what.
+	card, err := db.ReadCard(cardId)
+	if err == nil {
+		if card.AlbumID != nil && *card.AlbumID > 0 {
+			return uint32(*card.AlbumID)
+		}
+	}
+	panic(fmt.Errorf("couldn't get a card with id %v", cardId))
+}
+
+func readSingleCard() (string, error) {
+	c, err := nfc.CreateReader()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer c.Close()
+	fmt.Println("Please add a card to read...")
+
+	for {
+		select {
+		case cardEvent, ok := <-c.Events():
+			if !ok {
+				return "", errors.New("card channel closed unexpectedly")
+			}
+			if cardEvent.State == nfc.Activated {
+				log.Debugf("Read card %v", cardEvent.CardID)
+				return cardEvent.CardID, nil
+			}
+		case <-time.After(20 * time.Second):
+			return "", errors.New("no card found")
+		}
+	}
 }
 
 func searchAlbum() {
@@ -193,7 +223,10 @@ func checkLength(s string, l int) string {
 }
 
 func generateLabel(id uint32) {
-	f, err := os.Create("label.png")
+	file := fmt.Sprintf("%v.png", id)
+	log.Infof("Generating label for album %v into %v", albumId, file)
+
+	f, err := os.Create(file)
 	if err != nil {
 		panic(err)
 	}
@@ -202,18 +235,6 @@ func generateLabel(id uint32) {
 	if err := deezer.CreateLabel(fmt.Sprintf("%d", id), f); err != nil {
 		panic(err)
 	}
-}
-
-type CardState int
-
-const (
-	Activated   CardState = 0
-	Deactivated CardState = 1
-)
-
-type Event struct {
-	CardID string
-	State  CardState
 }
 
 func startServer() {
@@ -263,16 +284,20 @@ func startServer() {
 		}
 	}()
 
-	events := cardChannel()
+	reader, err := nfc.CreateReader()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer reader.Close()
 	lastActive := ""
 	for {
-		card, open := <-events
+		card, open := <-reader.Events()
 		if !open {
 			return
 		}
 
-		if card.State == Activated {
-			log.Infof("Card %v activated\n", card.CardID)
+		if card.State == nfc.Activated {
+			log.Infof("Card %v activated", card.CardID)
 			led.Yellow()
 			play = true
 
@@ -331,57 +356,3 @@ func tigerCheck(tiger *ui.Tiger, led *ui.ColorLed) func() {
 	}
 }
 
-func cardChannel() <-chan Event {
-	reader, err := nfc.MakeRFID(0, 0, 100000, 22, 18)
-	if err != nil {
-		log.Fatal(err)
-	}
-	events := make(chan Event, 10)
-	go func() {
-		defer close(events)
-		lastConfirmedId, lastSeenId := "", ""
-		debounceIndex := 0
-		for {
-			time.Sleep(150 * time.Millisecond)
-
-			id, err := reader.ReadCardID()
-			if err != nil {
-				log.Debugf("error when reading card ID: %v", err)
-			}
-
-			log.Debugf("ID: %v, lastSeen: %v, lastConfirmed: %v, debounce: %v", id, lastSeenId, lastConfirmedId, debounceIndex)
-
-			if lastSeenId != id {
-				lastSeenId = id
-				debounceIndex = 0
-				continue
-			}
-
-			if lastConfirmedId == id {
-				continue
-			}
-
-			// debounce the card, in case we have half reads, or multiple cards. This means there is a slight lag to
-			// start playing, but it also means it's way more stable when it actually does...
-			debounceIndex++
-			if debounceIndex >= 4 {
-				if id == "" {
-					// There is no card currently
-					log.Debugln("Sending deactivation event")
-					events <- Event{State: Deactivated, CardID: ""}
-				} else {
-					log.Debugf("Sending activation event for card %v", id)
-					events <- Event{State: Activated, CardID: id}
-
-					// there seems to be some issues with reading sometimes. Not sure why that would be, but here we
-					// sleep as an extra countermeasure against "bounce". Since a card was just added, we might
-					// as well let it get going before reading again.
-					time.Sleep(1000 * time.Millisecond)
-				}
-				lastConfirmedId = id
-				debounceIndex = 0
-			}
-		}
-	}()
-	return events
-}

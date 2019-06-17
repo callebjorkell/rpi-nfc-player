@@ -55,6 +55,9 @@ func (db *DB) ReadCard(id string) (sonos.Playlist, error) {
 	err := db.instance.View(func(tx *buntdb.Tx) error {
 		s, err := tx.Get(getCardKey(id))
 		if err != nil {
+			if err == buntdb.ErrNotFound {
+				return fmt.Errorf("card %v has not been provisioned", id)
+			}
 			return err
 		}
 		return json.Unmarshal([]byte(s), &c)

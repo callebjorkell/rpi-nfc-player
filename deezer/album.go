@@ -76,12 +76,15 @@ func CreateLabel(albumId string, out io.Writer) error {
 		return fmt.Errorf("could not fetch album info: %v", err.Error())
 	}
 
+	logrus.Debugf("Generating label for %v (%v - %v)", c.Id, c.Artist, c.Title)
 	img := defaultArt
 	if c.Cover != "" {
 		img, err = fetchAlbumArt(c.Cover)
 		if err != nil {
 			return fmt.Errorf("could not fetch album art: %v", err.Error())
 		}
+	} else {
+		logrus.Debugln("Using the default album art")
 	}
 
 	l := gg.NewContext(width, height)
@@ -110,6 +113,7 @@ func CreateLabel(albumId string, out io.Writer) error {
 		return err
 	}
 
+	logrus.Debugln("Render album %v to a PNG", c.Id)
 	if err := l.EncodePNG(out); err != nil {
 		return fmt.Errorf("could not render PNG: %v", err.Error())
 	}
