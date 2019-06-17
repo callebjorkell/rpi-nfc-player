@@ -80,6 +80,8 @@ func (s *SonosSpeaker) SetPlaylist(playlist Playlist) {
 		s.addChunk(playlist.Tracks[i:l], i+1)
 	}
 
+	s.SetRepeat(true)
+
 	if playlist.State != nil {
 		logrus.Debugf("Resuming the previous state from track %v", playlist.State.CurrentTrack)
 		s.SetTrack(playlist.State.CurrentTrack)
@@ -98,6 +100,22 @@ func (s *SonosSpeaker) SetTrack(position int) {
 	}
 
 	s.control.Action("Seek", in, nil)
+}
+
+func (s *SonosSpeaker) SetRepeat(repeat bool) {
+	mode := "NORMAL"
+	if repeat {
+		mode = "REPEAT_ALL"
+	}
+	in := struct {
+		InstanceID string
+		NewPlayMode string
+	}{
+		"0",
+		mode, // or NORMAL
+	}
+
+	s.control.Action("SetPlayMode", in, nil)
 }
 
 // addChunk adds a chunk of tracks to the sonos speaker. Note that if this goes over 16 in size, there are probably going to be problems.
