@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"github.com/sirupsen/logrus"
 	"os"
 	"periph.io/x/periph/conn/gpio"
 	"periph.io/x/periph/conn/gpio/gpioreg"
@@ -105,7 +106,7 @@ func IsPressed(button Button) bool {
 }
 
 func handleButton(b gpio.PinIO, t Button, c chan ButtonEvent, initialized *sync.WaitGroup) {
-	fmt.Println("Handling button ", b.Name())
+	logrus.Debugln("Handling button ", b.Name())
 	if err := b.In(gpio.PullUp, gpio.BothEdges); err != nil {
 		handleErr(err)
 	}

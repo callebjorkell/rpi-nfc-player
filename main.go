@@ -19,9 +19,10 @@ import (
 var db = nfc.GetDB()
 
 var (
-	app   = kingpin.New("nfc-player", "Music player that plays deezer playlists on a sonos speakes with the help of NFC cards, a Raspberry Pi and some buttons.")
-	debug = app.Flag("debug", "Turn on debug logging.").Bool()
-	start = app.Command("start", "Start the music player and start listening for NFC cards.")
+	app     = kingpin.New("nfc-player", "Music player that plays deezer playlists on a sonos speakes with the help of NFC cards, a Raspberry Pi and some buttons.")
+	debug   = app.Flag("debug", "Turn on debug logging.").Bool()
+	start   = app.Command("start", "Start the music player and start listening for NFC cards.")
+	speaker = start.Flag("speaker", "The name of the speaker that the player should control.").Required().String()
 
 	add         = app.Command("add", "Construct and add a new playlist to a card.")
 	albumId     = add.Arg("id", "The ID of the album that should be added.").Required().Uint32()
@@ -288,13 +289,13 @@ func generateLabel(id uint32) {
 }
 
 func startServer() {
-	tiger := ui.GetTiger()
-	buttons := ui.InitButtons()
-	led := ui.GetColorLED()
-	s, err := sonos.New("Guest Room")
+	s, err := sonos.New(*speaker)
 	if err != nil {
 		log.Fatal(err)
 	}
+	tiger := ui.GetTiger()
+	buttons := ui.InitButtons()
+	led := ui.GetColorLED()
 
 	checkTiger := tigerCheck(tiger, led)
 	checkTiger()
@@ -348,7 +349,7 @@ func startServer() {
 
 		if card.State == nfc.Activated {
 			log.Infof("Card %v activated", card.CardID)
-			led.Yellow()
+			led.Purple()
 			play = true
 
 			// save this so that we can fetch it later and update the state
@@ -360,8 +361,8 @@ func startServer() {
 				continue
 			}
 			s.SetPlaylist(p)
-			// apparently this returns before the player is ready
-			time.Sleep(500 * time.Millisecond)
+			// apparently this returns before the player is ready sometimes
+			time.Sleep(750 * time.Millisecond)
 
 			s.Play()
 
