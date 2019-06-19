@@ -29,6 +29,7 @@ var (
 
 	dump       = app.Command("dump", "Read a card and dump all the available information onto standard out.")
 	dumpCardId = dump.Flag("cardId", "Manually specify the card id to be used.").String()
+	dumpInfo   = dump.Flag("albumInfo", "Dump information about the album the card points to instead of the data on the card.").Bool()
 	dumpList   = dump.Flag("list", "Dump a short list of all the cards in the database").Bool()
 
 	search       = app.Command("search", "Search for albums on deezer")
@@ -36,7 +37,8 @@ var (
 
 	label        = app.Command("label", "Create a label for a card.")
 	labelAlbumId = label.Flag("id", "The id of the album that should be created. If not provided, a card will be requested.").Uint32()
-	labelCardId  = label.Flag("cardId", "Manually specify the card that the label should be printed for").String()
+	labelCardId  = label.Flag("cardId", "Manually specify the card that the label should be printed for.").String()
+	sheet        = label.Flag("sheet", "Render all labels in the database onto A4 sized sheets for batch printing. Using this ignores the cardId and id flags if set.").Bool()
 )
 
 func main() {
@@ -84,6 +86,39 @@ func main() {
 	}
 }
 
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func createSheet() {
+	cards, err := db.ReadAll()
+	var ids []string
+	if err == nil {
+		for _, card := range *cards {
+			if card.AlbumID != nil && *card.AlbumID > 0 {
+				ids = append(ids, strconv.Itoa(*card.AlbumID))
+			}
+		}
+	}
+
+	step := deezer.LabelsPerSheet
+	for i := 0; i*step < len(ids); i++ {
+		f, err := os.Create(fmt.Sprintf("sheet%v.png", i))
+		if err != nil {
+			panic(err)
+		}
+		defer f.Close()
+
+		index := i * step
+		if err := deezer.CreateLabelSheet(ids[index:min(index+step, len(ids))], f); err != nil {
+			panic(err)
+		}
+	}
+}
+
 func dumpAll() {
 	c, err := db.ReadAll()
 	if err != nil {
@@ -115,7 +150,17 @@ func dumpCard(cardId string) {
 		log.Error(err)
 		return
 	}
-	fmt.Println(p.String())
+
+	if *dumpInfo {
+		a, err := deezer.AlbumInfo(strconv.Itoa(*p.AlbumID))
+		if err != nil {
+			log.Error(err)
+			return
+		}
+		fmt.Println(a)
+	} else {
+		fmt.Println(p)
+	}
 }
 
 func addAlbum(id uint32) {
@@ -141,6 +186,11 @@ func addAlbum(id uint32) {
 }
 
 func createLabel() {
+	if *sheet {
+		createSheet()
+		return
+	}
+
 	id := getLabelAlbumId(*labelAlbumId, *labelCardId)
 
 	generateLabel(id)
@@ -355,4 +405,3 @@ func tigerCheck(tiger *ui.Tiger, led *ui.ColorLed) func() {
 		}
 	}
 }
-

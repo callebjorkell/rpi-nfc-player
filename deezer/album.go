@@ -13,15 +13,17 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
 // image size of 50x81.6mm (85.60 mm × 53.98 with 2mm margin on each side) at 600 DPI
 // = 1181 x 1928 pix
 
-const height = 1928
-const width = 1181
+const labelHeight = 1928
+const labelWidth = 1181
 const artSize = 755
 const strokeSize = 4
 
@@ -39,6 +41,14 @@ var colors = []string{
 	"#FF7E00",
 	"#FDEE00",
 }
+
+const (
+	a4Width          = 4962
+	a4Height         = 7014
+	horizontalLabels = 3
+	verticalLabels   = 3
+	LabelsPerSheet   = horizontalLabels * verticalLabels
+)
 
 type Album struct {
 	Id     int    `json:"id"`
@@ -62,6 +72,10 @@ func (a *Album) Tracks() []string {
 	return tracks
 }
 
+func (a Album) String() string {
+	return fmt.Sprintf("ID: %v, artist: %v, title: %v, tracks: %v", a.Id, a.Artist.Name, a.Title, len(a.TrackList.Data))
+}
+
 func init() {
 	rand.Seed(time.Now().Unix())
 }
@@ -70,10 +84,75 @@ func AlbumInfo(albumId string) (*Album, error) {
 	return getInfo(albumId)
 }
 
+func CreateLabelSheet(albums []string, out io.Writer) error {
+	if len(albums) > LabelsPerSheet {
+		return fmt.Errorf("too many albums for a single sheet. Max: %v, got: %v", LabelsPerSheet, len(albums))
+	}
+	l := gg.NewContext(a4Width, a4Height) // A4 size @ 600 dpi
+
+	baseX := (a4Width - (horizontalLabels * labelWidth)) / 2
+	baseY := (a4Height - (verticalLabels * labelHeight)) / 2
+
+	wg := sync.WaitGroup{}
+	drawing := &sync.Mutex{}
+
+	l.SetRGB(1, 1, 1)
+	l.Clear()
+	l.SetRGB(0, 0, 0)
+	l.SetLineWidth(4)
+
+	for index, albumId := range albums {
+		wg.Add(1)
+		go func(index int, albumId string) {
+			defer wg.Done()
+			c, _ := renderLabelContext(albumId)
+			logrus.Debugf("Rendering album label for %v at index %v", albumId, index)
+			x := baseX + (index % horizontalLabels * labelWidth)
+			y := baseY + (index / verticalLabels * labelHeight)
+
+			drawing.Lock()
+			l.DrawImage(c.Image(), x, y)
+			drawCutMark(l, x, y)
+			drawCutMark(l, x, y+labelHeight)
+			drawCutMark(l, x+labelWidth, y)
+			drawCutMark(l, x+labelWidth, y+labelHeight)
+			l.Stroke()
+			drawing.Unlock()
+		}(index, albumId)
+	}
+	wg.Wait()
+
+	logrus.Debugln("Rendering album sheet to a PNG")
+	if err := l.EncodePNG(out); err != nil {
+		return fmt.Errorf("could not render PNG: %v", err.Error())
+	}
+	return nil
+}
+
+func drawCutMark(l *gg.Context, x, y int) {
+	fx := float64(x)
+	fy := float64(y)
+	l.DrawLine(fx-30, fy, 30+fx, fy)
+	l.DrawLine(fx, fy-30, fx, fy+30)
+}
+
 func CreateLabel(albumId string, out io.Writer) error {
+	l, err := renderLabelContext(albumId)
+	if err != nil {
+		return err
+	}
+
+	logrus.Debugf("Render album %v to a PNG", albumId)
+	if err := l.EncodePNG(out); err != nil {
+		return fmt.Errorf("could not render PNG: %v", err.Error())
+	}
+	return nil
+}
+
+func renderLabelContext(albumId string) (*gg.Context, error) {
 	c, err := getInfo(albumId)
 	if err != nil {
-		return fmt.Errorf("could not fetch album info: %v", err.Error())
+		return nil, fmt.Errorf("could not fetch album info: %v", err.Error())
 	}
 
 	logrus.Debugf("Generating label for %v (%v - %v)", c.Id, c.Artist, c.Title)
@@ -81,43 +160,46 @@ func CreateLabel(albumId string, out io.Writer) error {
 	if c.Cover != "" {
 		img, err = fetchAlbumArt(c.Cover)
 		if err != nil {
-			return fmt.Errorf("could not fetch album art: %v", err.Error())
+			return nil, fmt.Errorf("could not fetch album art: %v", err.Error())
 		}
 	} else {
 		logrus.Debugln("Using the default album art")
 	}
 
-	l := gg.NewContext(width, height)
+	l := gg.NewContext(labelWidth, labelHeight)
 
 	scaled := resize.Resize(artSize, 0, *img, resize.Lanczos3)
 	l.SetRGB(1, 1, 1)
 	l.Clear()
 
-	origin := width / 2
+	origin := labelWidth / 2
 	l.DrawImageAnchored(scaled, origin, origin, 0.5, 0.5)
 
 	frame, err := getFrame()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	l.DrawImage(frame, 0, 0)
 
 	col := colors[rand.Int()%len(colors)]
 	l.SetHexColor(col)
-	if err := renderString(l, strings.ToUpper(c.Title), 96, 1250); err != nil {
-		return err
+	r := regexp.MustCompile("\\(.*\\)")
+	title := r.ReplaceAllString(c.Title, "")
+
+	l.Push()
+	l.DrawRectangle(0, 1200, float64(labelWidth), 465)
+	l.Clip()
+	if err := renderString(l, strings.ToUpper(title), 96, 1250); err != nil {
+		return nil, err
 	}
+	l.ResetClip()
+	l.Pop()
 
 	l.SetHexColor(col + "60")
 	if err := renderString(l, strings.ToUpper(c.Artist.Name), 64, 1700); err != nil {
-		return err
+		return nil, err
 	}
-
-	logrus.Debugln("Render album %v to a PNG", c.Id)
-	if err := l.EncodePNG(out); err != nil {
-		return fmt.Errorf("could not render PNG: %v", err.Error())
-	}
-	return nil
+	return l, nil
 }
 
 func getFrame() (image.Image, error) {
@@ -149,10 +231,10 @@ func renderString(c *gg.Context, s string, size, y float64) error {
 	if err := c.LoadFontFace(fontFile, size); err != nil {
 		return fmt.Errorf("could not load the font: %v", err.Error())
 	}
-	lines := c.WordWrap(s, width-(width/10))
+	lines := c.WordWrap(s, labelWidth-(labelWidth/10))
 	for i, line := range lines {
 		c.Push()
-		w := float64(width / 2)
+		w := float64(labelWidth / 2)
 		h := y + float64(i)*size*1.2
 
 		c.SetRGB(0.2, 0.2, 0.2)

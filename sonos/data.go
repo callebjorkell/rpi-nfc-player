@@ -32,10 +32,10 @@ type Playlist struct {
 	State *PlaylistState `json:"state,omitempty"`
 }
 
-func (p *Playlist) String() string {
+func (p Playlist) String() string {
 	b, err := json.MarshalIndent(p, "", "  ")
 	if err != nil {
-		return fmt.Sprint(p)
+		return fmt.Sprintf("ID: %v, album: %v", p.ID, p.AlbumID)
 	}
 	return string(b)
 }
