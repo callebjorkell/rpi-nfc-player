@@ -22,16 +22,24 @@ import (
 // image size of 50x81.6mm (85.60 mm × 53.98 with 2mm margin on each side) at 600 DPI
 // = 1181 x 1928 pix
 
-const labelHeight = 1928
-const labelWidth = 1181
-const artSize = 755
-const strokeSize = 4
+const (
+	a4Width          = 4962
+	a4Height         = 7014
+	horizontalLabels = 3
+	verticalLabels   = 3
+	LabelsPerSheet   = horizontalLabels * verticalLabels
 
-const uriBase = "https://api.deezer.com/album"
-const fontFile = "/usr/share/fonts/truetype/msttcorefonts/Comic_Sans_MS_Bold.ttf"
+	labelHeight = 1928
+	labelWidth  = 1181
+	artSize     = 755
+	strokeSize  = 4
+
+	uriBase = "https://api.deezer.com/album"
+	// this thing doesn't exist on the raspberry. Fix to add a proper font path if one wants to generate labels on there
+	fontFile = "/usr/share/fonts/truetype/msttcorefonts/Comic_Sans_MS_Bold.ttf"
+)
 
 var defaultArt = getDefaultArt()
-
 var colors = []string{
 	"#0048BA",
 	"#D3212D",
@@ -42,13 +50,9 @@ var colors = []string{
 	"#FDEE00",
 }
 
-const (
-	a4Width          = 4962
-	a4Height         = 7014
-	horizontalLabels = 3
-	verticalLabels   = 3
-	LabelsPerSheet   = horizontalLabels * verticalLabels
-)
+func init() {
+	rand.Seed(time.Now().Unix())
+}
 
 type Album struct {
 	Id     int    `json:"id"`
@@ -74,10 +78,6 @@ func (a *Album) Tracks() []string {
 
 func (a Album) String() string {
 	return fmt.Sprintf("ID: %v, artist: %v, title: %v, tracks: %v", a.Id, a.Artist.Name, a.Title, len(a.TrackList.Data))
-}
-
-func init() {
-	rand.Seed(time.Now().Unix())
 }
 
 func AlbumInfo(albumId string) (*Album, error) {
@@ -129,13 +129,6 @@ func CreateLabelSheet(albums []string, out io.Writer) error {
 	return nil
 }
 
-func drawCutMark(l *gg.Context, x, y int) {
-	fx := float64(x)
-	fy := float64(y)
-	l.DrawLine(fx-30, fy, 30+fx, fy)
-	l.DrawLine(fx, fy-30, fx, fy+30)
-}
-
 func CreateLabel(albumId string, out io.Writer) error {
 	l, err := renderLabelContext(albumId)
 	if err != nil {
@@ -147,6 +140,13 @@ func CreateLabel(albumId string, out io.Writer) error {
 		return fmt.Errorf("could not render PNG: %v", err.Error())
 	}
 	return nil
+}
+
+func drawCutMark(l *gg.Context, x, y int) {
+	fx := float64(x)
+	fy := float64(y)
+	l.DrawLine(fx-30, fy, 30+fx, fy)
+	l.DrawLine(fx, fy-30, fx, fy+30)
 }
 
 func renderLabelContext(albumId string) (*gg.Context, error) {

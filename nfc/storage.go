@@ -11,6 +11,25 @@ type DB struct {
 	instance *buntdb.DB
 }
 
+// Get a DB, panicking on any error
+func GetDB() *DB {
+	db, err := buntdb.Open("tracks.db")
+	if err != nil {
+		panic(err)
+	}
+	conf := buntdb.Config{}
+	err = db.ReadConfig(&conf)
+	if err != nil {
+		panic(err)
+	}
+	conf.SyncPolicy = buntdb.Always
+	err = db.SetConfig(conf)
+	if err != nil {
+		panic(err)
+	}
+	return &DB{instance: db}
+}
+
 func (db *DB) Close() error {
 	return db.instance.Close()
 }
@@ -74,23 +93,4 @@ func (db *DB) DeleteCard(id string) error {
 
 func getCardKey(id string) string {
 	return fmt.Sprintf("card:%v", id)
-}
-
-// Get a DB, panicking on any error
-func GetDB() *DB {
-	db, err := buntdb.Open("tracks.db")
-	if err != nil {
-		panic(err)
-	}
-	conf := buntdb.Config{}
-	err = db.ReadConfig(&conf)
-	if err != nil {
-		panic(err)
-	}
-	conf.SyncPolicy = buntdb.Always
-	err = db.SetConfig(conf)
-	if err != nil {
-		panic(err)
-	}
-	return &DB{instance: db}
 }

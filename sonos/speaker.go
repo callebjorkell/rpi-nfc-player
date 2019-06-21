@@ -5,10 +5,15 @@ import (
 	"github.com/huin/goupnp"
 	"github.com/huin/goupnp/soap"
 	"github.com/sirupsen/logrus"
-	"log"
 	"strconv"
 	"strings"
 )
+
+/*
+ * I would probably have given up on trying to figure out most of this stuff if it wasn't for the excellent PHP library
+ * made by Craig Duncan (https://github.com/duncan3dc/sonos). This served as a blueprint for what to pass and where
+ * to make the sonos speakers do my bidding :)
+ */
 
 type SonosSpeaker struct {
 	control *service
@@ -26,12 +31,13 @@ type State struct {
 func New(name string) (*SonosSpeaker, error) {
 	d, err := goupnp.DiscoverDevices("urn:schemas-upnp-org:device:ZonePlayer:1")
 	if err != nil {
-		log.Fatal(err)
+		logrus.Fatal(err)
 	}
 	for _, dev := range d {
 		root, err := goupnp.DeviceByURL(dev.Location)
 		if err != nil {
-			log.Printf("Could not retrieve %v, speaker went away?", dev.Location)
+			logrus.Errorf("Could not retrieve %v, speaker went away?", dev.Location)
+			continue
 		}
 
 		s, err := getService(root, "DeviceProperties")
@@ -108,7 +114,7 @@ func (s *SonosSpeaker) SetRepeat(repeat bool) {
 		mode = "REPEAT_ALL"
 	}
 	in := struct {
-		InstanceID string
+		InstanceID  string
 		NewPlayMode string
 	}{
 		"0",
@@ -207,7 +213,6 @@ func (s *SonosSpeaker) MediaInfo() (State, error) {
 	}{
 		"0",
 	}
-	//<u:GetPositionInfoResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><Track>1</Track><TrackDuration>0:04:21</TrackDuration><TrackMetaData>&lt;DIDL-Lite xmlns:dc=&quot;http://purl.org/dc/elements/1.1/&quot; xmlns:upnp=&quot;urn:schemas-upnp-org:metadata-1-0/upnp/&quot; xmlns:r=&quot;urn:schemas-rinconnetworks-com:metadata-1-0/&quot; xmlns=&quot;urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/&quot;&gt;&lt;item id=&quot;-1&quot; parentID=&quot;-1&quot; restricted=&quot;true&quot;&gt;&lt;res protocolInfo=&quot;sonos.com-http:*:audio/mpeg:*&quot; duration=&quot;0:04:21&quot;&gt;x-sonos-http:tr%3a63534071.mp3?sid=2&amp;amp;flags=8224&amp;amp;sn=2&lt;/res&gt;&lt;r:streamContent&gt;&lt;/r:streamContent&gt;&lt;upnp:albumArtURI&gt;/getaa?s=1&amp;amp;u=x-sonos-http%3atr%253a63534071.mp3%3fsid%3d2%26flags%3d8224%26sn%3d2&lt;/upnp:albumArtURI&gt;&lt;dc:title&gt;Weatherman&lt;/dc:title&gt;&lt;upnp:class&gt;object.item.audioItem.musicTrack&lt;/upnp:class&gt;&lt;dc:creator&gt;Dead Sara&lt;/dc:creator&gt;&lt;upnp:album&gt;Dead Sara&lt;/upnp:album&gt;&lt;/item&gt;&lt;/DIDL-Lite&gt;</TrackMetaData><TrackURI>x-sonos-http:tr%3a63534071.mp3?sid=2&amp;flags=8224&amp;sn=2</TrackURI><RelTime>0:00:50</RelTime><AbsTime>NOT_IMPLEMENTED</AbsTime><RelCount>2147483647</RelCount><AbsCount>2147483647</AbsCount></u:GetPositionInfoResponse>
 	out := State{}
 	err := s.control.Action("GetPositionInfo", &in, &out)
 	return out, err

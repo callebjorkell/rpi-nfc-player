@@ -12,11 +12,9 @@ type TrackType int
 const (
 	Deezer TrackLocation = 0
 	Local  TrackLocation = 1
-)
 
-const (
 	Music     TrackType = 0
-	AudioBook TrackType = 1
+	AudioBook TrackType = 1 // not really used (yet?)
 )
 
 type Playlist struct {

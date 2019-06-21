@@ -1,8 +1,5 @@
 package nfc
 
-// MFRC522 spec can be found here: https://www.nxp.com/docs/en/data-sheet/MFRC522.pdf
-// MIFARE Ultralight C spec: https://www.nxp.com/docs/en/data-sheet/MF0ICU2.pdf
-
 import (
 	"encoding/hex"
 	"errors"
@@ -18,9 +15,25 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-var NoCardErr = errors.New("no card detected")
-var stateLock sync.Mutex
-var active bool
+// MFRC522 spec can be found here: https://www.nxp.com/docs/en/data-sheet/MFRC522.pdf
+// MIFARE Ultralight C spec: https://www.nxp.com/docs/en/data-sheet/MF0ICU2.pdf
+
+/*
+ * This package is a modified version of the base of https://github.com/jdevelop/golang-rpi-extras/ (I still depend
+ * on some parts of it). I've dropped the parts I didn't end up using, and most notably, I've added the ID detection
+ * for MIFARE cards like the Ultralight that requires a L2 AntiColl to fetch the full ID.
+ */
+
+const (
+	Activated   CardState = 0
+	Deactivated CardState = 1
+)
+
+var (
+	NoCardErr = errors.New("no card detected")
+	stateLock sync.Mutex
+	active bool
+)
 
 type CardState int
 type CardEvent struct {
@@ -28,21 +41,16 @@ type CardEvent struct {
 	State  CardState
 }
 
-const (
-	Activated   CardState = 0
-	Deactivated CardState = 1
-)
+type CardReader interface {
+	io.Closer
+	Events() <-chan CardEvent
+}
 
 type rfid struct {
 	ResetPin    gpio.Pin
 	antennaGain int
 	MaxSpeedHz  int
 	spiDev      *spi.Device
-}
-
-type CardReader interface {
-	io.Closer
-	Events() <-chan CardEvent
 }
 
 type cardReader struct {
@@ -98,7 +106,7 @@ func CreateReader() (CardReader, error) {
 				log.Debugln("CardReader stopped. Returning.")
 				return
 			case <-time.After(150 * time.Millisecond):
-				// just do another loop
+				// after sleeping, DO WORK!
 			}
 
 			id, err := reader.readCardId()
@@ -132,7 +140,7 @@ func CreateReader() (CardReader, error) {
 
 					// there seems to be some issues with reading sometimes. Not sure why that would be, but here we
 					// sleep as an extra countermeasure against "bounce". Since a card was just added, we might
-					// as well let it get going before reading again.
+					// as well let it get going before reading again. Seems to help.
 					time.Sleep(1000 * time.Millisecond)
 				}
 				lastConfirmedId = id
@@ -141,6 +149,10 @@ func CreateReader() (CardReader, error) {
 		}
 	}()
 	return c, nil
+}
+
+func (r *rfid) Close() error {
+	return r.spiDev.Close()
 }
 
 func (r *rfid) readCardId() (string, error) {
@@ -242,10 +254,6 @@ func (r *rfid) init() (err error) {
 		return
 	}
 	return
-}
-
-func (r *rfid) Close() error {
-	return r.spiDev.Close()
 }
 
 func (r *rfid) writeSpiData(dataIn []byte) (out []byte, err error) {
