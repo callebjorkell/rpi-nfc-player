@@ -319,18 +319,28 @@ func startServer() {
 						}
 					} else {
 						tiger.Off()
-						led.Off()
+						if play {
+							led.Green()
+						} else {
+							led.Off()
+						}
 					}
 				case ui.Red:
 					if b.Pressed && play {
+						led.Yellow()
 						s.Previous()
+						time.Sleep(400 * time.Millisecond)
+						led.Green()
 					}
 				case ui.Blue:
 					if b.Pressed && play {
+						led.Cyan()
 						s.Next()
+						time.Sleep(400 * time.Millisecond)
+						led.Green()
 					}
 				}
-				fmt.Println(b.String())
+				log.Debugln(b)
 			}
 		}
 	}()
