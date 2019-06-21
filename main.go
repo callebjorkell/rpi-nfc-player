@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"github.com/callebjorkell/rpi-nfc-player/deezer"
 	"github.com/callebjorkell/rpi-nfc-player/nfc"
 	"github.com/callebjorkell/rpi-nfc-player/sonos"
 	"github.com/callebjorkell/rpi-nfc-player/ui"
@@ -12,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -87,138 +87,6 @@ func main() {
 	}
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func createSheet() {
-	cards, err := db.ReadAll()
-	var ids []string
-	if err == nil {
-		for _, card := range *cards {
-			if card.AlbumID != nil && *card.AlbumID > 0 {
-				ids = append(ids, strconv.Itoa(*card.AlbumID))
-			}
-		}
-	}
-
-	step := deezer.LabelsPerSheet
-	for i := 0; i*step < len(ids); i++ {
-		f, err := os.Create(fmt.Sprintf("sheet%v.png", i))
-		if err != nil {
-			panic(err)
-		}
-		defer f.Close()
-
-		index := i * step
-		if err := deezer.CreateLabelSheet(ids[index:min(index+step, len(ids))], f); err != nil {
-			panic(err)
-		}
-	}
-}
-
-func dumpAll() {
-	c, err := db.ReadAll()
-	if err != nil {
-		panic(err)
-	}
-
-	if len(*c) > 0 {
-		fmt.Println("            ID │   AlbumId   │ PlaylistId │ Tracks ")
-		fmt.Println("───────────────┼─────────────┼────────────┼────────")
-	} else {
-		fmt.Println("No cards found in the database...")
-	}
-	for _, card := range *c {
-		fmt.Printf("%14v │ %11v │ %10v │ %4v \n", card.ID, *card.AlbumID, card.PlaylistID, len(card.Tracks))
-	}
-}
-
-func dumpCard(cardId string) {
-	if cardId == "" {
-		id, err := readSingleCard()
-		if err != nil {
-			log.Fatal(err)
-		}
-		cardId = id
-	}
-
-	p, err := db.ReadCard(cardId)
-	if err != nil {
-		log.Error(err)
-		return
-	}
-
-	if *dumpInfo {
-		a, err := deezer.AlbumInfo(strconv.Itoa(*p.AlbumID))
-		if err != nil {
-			log.Error(err)
-			return
-		}
-		fmt.Println(a)
-	} else {
-		fmt.Println(p)
-	}
-}
-
-func addAlbum(id uint32) {
-	a, err := deezer.AlbumInfo(fmt.Sprint(id))
-	if err != nil {
-		log.Error(err)
-		return
-	}
-
-	var cardId string
-	if *albumCardId != "" {
-		cardId = *albumCardId
-	} else {
-		id, err := readSingleCard()
-		if err != nil {
-			log.Fatal(err)
-		}
-		cardId = id
-	}
-	p := sonos.FromAlbum(a, cardId)
-
-	db.StoreCard(*p)
-}
-
-func createLabel() {
-	if *sheet {
-		createSheet()
-		return
-	}
-
-	id := getLabelAlbumId(*labelAlbumId, *labelCardId)
-
-	generateLabel(id)
-}
-
-func getLabelAlbumId(givenAlbumId uint32, cardId string) uint32 {
-	if givenAlbumId > 0 {
-		return givenAlbumId
-	}
-
-	if cardId == "" {
-		if read, err := readSingleCard(); err != nil {
-			log.Fatal(err)
-		} else {
-			cardId = read
-		}
-	}
-
-	card, err := db.ReadCard(cardId)
-	if err == nil {
-		if card.AlbumID != nil && *card.AlbumID > 0 {
-			return uint32(*card.AlbumID)
-		}
-	}
-	panic(fmt.Errorf("couldn't get a card with id %v", cardId))
-}
-
 func readSingleCard() (string, error) {
 	c, err := nfc.CreateReader()
 	if err != nil {
@@ -244,50 +112,6 @@ func readSingleCard() (string, error) {
 	}
 }
 
-func searchAlbum() {
-	r, err := deezer.AlbumSearch(*searchString)
-	if err != nil {
-		log.Error(err)
-		return
-	}
-
-	if len(r.Data) > 0 {
-		if len(r.Data) < r.Total {
-			fmt.Printf("Too many matches (%v). Only showing the first %v.\n\n", r.Total, len(r.Data))
-		}
-		fmt.Println("            ID │ Artist - Title")
-		fmt.Println("───────────────┼────────────────────")
-		for _, v := range r.Data {
-			fmt.Printf("%14v │ %v - %v\n", v.Id, checkLength(v.Artist.Name, 50), checkLength(v.Title, 75))
-
-		}
-	} else {
-		fmt.Println("No matches. Try a different query string.")
-	}
-}
-
-func checkLength(s string, l int) string {
-	if len(s) > l {
-		return s[:l] + "…"
-	}
-	return s
-}
-
-func generateLabel(id uint32) {
-	file := fmt.Sprintf("%v.png", id)
-	log.Infof("Generating label for album %v into %v", albumId, file)
-
-	f, err := os.Create(file)
-	if err != nil {
-		panic(err)
-	}
-	defer f.Close()
-
-	if err := deezer.CreateLabel(fmt.Sprintf("%d", id), f); err != nil {
-		panic(err)
-	}
-}
-
 func startServer() {
 	s, err := sonos.New(*speaker)
 	if err != nil {
@@ -300,6 +124,7 @@ func startServer() {
 	checkTiger := tigerCheck(tiger, led)
 	checkTiger()
 	play := false
+	playSync := &sync.Mutex{}
 
 	go func() {
 		for {
@@ -310,37 +135,11 @@ func startServer() {
 					return
 				}
 
-				switch b.Button {
-				case ui.TigerSwitch:
-					if b.Pressed {
-						if !play {
-							tiger.On()
-							led.Red()
-						}
-					} else {
-						tiger.Off()
-						if play {
-							led.Green()
-						} else {
-							led.Off()
-						}
-					}
-				case ui.Red:
-					if b.Pressed && play {
-						led.Yellow()
-						s.Previous()
-						time.Sleep(400 * time.Millisecond)
-						led.Green()
-					}
-				case ui.Blue:
-					if b.Pressed && play {
-						led.Cyan()
-						s.Next()
-						time.Sleep(400 * time.Millisecond)
-						led.Green()
-					}
-				}
-				log.Debugln(b)
+				playSync.Lock()
+				handleButton(&b, play, tiger, led, s)
+				playSync.Unlock()
+			case <-time.After(time.Second):
+				// allow the scheduler to run
 			}
 		}
 	}()
@@ -357,52 +156,99 @@ func startServer() {
 			return
 		}
 
-		if card.State == nfc.Activated {
-			log.Infof("Card %v activated", card.CardID)
-			led.Purple()
-			play = true
+		playSync.Lock()
+		play = isPlaying(&card)
+		playSync.Unlock()
 
-			// save this so that we can fetch it later and update the state
+		handleCard(&card, lastActive, led, s)
+
+		// should not need to lock here, since the state is not written other than above in this same loop.
+		if play {
 			lastActive = card.CardID
-
-			p, err := db.ReadCard(card.CardID)
-			if err != nil {
-				fmt.Println(err)
-				continue
-			}
-			s.SetPlaylist(p)
-			// apparently this returns before the player is ready sometimes
-			time.Sleep(750 * time.Millisecond)
-
-			s.Play()
-
-			led.Green()
 		} else {
-			log.Infoln("Card removed...")
-			if state, err := s.MediaInfo(); err == nil {
-				if p, err := db.ReadCard(lastActive); err == nil {
-					i, err := strconv.Atoi(state.Track)
-					if err != nil {
-						log.Warnf("Could not parse current track: %v", err.Error())
-						i = 1
-					}
+			checkTiger()
+		}
+	}
+}
 
-					p.State = &sonos.PlaylistState{
-						CurrentTrack:    i,
-						CurrentPosition: state.RelTime,
-					}
+func isPlaying(event *nfc.CardEvent) bool {
+	return event.State == nfc.Activated
+}
 
-					if err := db.StoreCard(p); err != nil {
-						log.Warn("Could not update playlist state: ", err)
-					} else {
-						log.Debugf("Updated card %v with state %v", lastActive, p.State)
-					}
+func handleCard(card *nfc.CardEvent, lastActive string, led *ui.ColorLed, speaker *sonos.SonosSpeaker) {
+	if card.State == nfc.Activated {
+		log.Infof("Card %v activated", card.CardID)
+		led.Purple()
+
+		p, err := db.ReadCard(card.CardID)
+		if err != nil {
+			log.Errorln(err)
+			return
+		}
+		speaker.SetPlaylist(p)
+		// apparently this returns before the player is ready sometimes
+		time.Sleep(750 * time.Millisecond)
+
+		speaker.Play()
+
+		led.Green()
+	} else {
+		log.Infoln("Card removed...")
+		if state, err := speaker.MediaInfo(); err == nil {
+			if p, err := db.ReadCard(lastActive); err == nil {
+				i, err := strconv.Atoi(state.Track)
+				if err != nil {
+					log.Warnf("Could not parse current track: %v", err.Error())
+					i = 1
+				}
+
+				p.State = &sonos.PlaylistState{
+					CurrentTrack:    i,
+					CurrentPosition: state.RelTime,
+				}
+
+				if err := db.StoreCard(p); err != nil {
+					log.Warn("Could not update playlist state: ", err)
+				} else {
+					log.Debugf("Updated card %v with state %v", lastActive, p.State)
 				}
 			}
-			s.Pause()
-			led.Off()
-			play = false
-			checkTiger()
+		}
+		speaker.Pause()
+		led.Off()
+	}
+}
+
+func handleButton(b *ui.ButtonEvent, playing bool, tiger *ui.Tiger, led *ui.ColorLed, speaker *sonos.SonosSpeaker) {
+	log.Debugln(b)
+	switch b.Button {
+	case ui.TigerSwitch:
+		if b.Pressed {
+			if !playing {
+				tiger.On()
+				led.Red()
+			}
+		} else {
+			tiger.Off()
+			if playing {
+				led.Green()
+			} else {
+				led.Off()
+			}
+		}
+	case ui.Red:
+		if b.Pressed && playing {
+			led.Yellow()
+			speaker.Previous()
+			time.Sleep(400 * time.Millisecond)
+			led.Green()
+		}
+	case ui.Blue:
+		if b.Pressed && playing {
+			led.Cyan()
+			speaker.Next()
+			time.Sleep(400 * time.Millisecond)
+			led.Green()
 		}
 	}
 }
