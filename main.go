@@ -293,7 +293,7 @@ func startServer() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	tiger := ui.GetTiger()
+	tiger := ui.InitTiger()
 	buttons := ui.InitButtons()
 	led := ui.GetColorLED()
 

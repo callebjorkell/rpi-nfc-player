@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"github.com/sirupsen/logrus"
 	"periph.io/x/periph/conn/gpio"
 	"periph.io/x/periph/conn/gpio/gpioreg"
 )
@@ -57,6 +58,8 @@ func (c *ColorLed) Off() {
 }
 
 func GetColorLED() *ColorLed {
+	logrus.Infoln("Initializing LED")
+
 	redLED := gpioreg.ByName("GPIO6")
 	greenLED := gpioreg.ByName("GPIO5")
 	blueLED := gpioreg.ByName("GPIO13")
