@@ -1,6 +1,7 @@
 .idea
 *.iml
 /nfc-player
+/rpi-nfc-player
 label.png
 tracks.db
 /*.png

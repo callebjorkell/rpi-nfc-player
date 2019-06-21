@@ -19,7 +19,7 @@ import (
 var db = nfc.GetDB()
 
 var (
-	app     = kingpin.New("nfc-player", "Music player that plays deezer playlists on a sonos speakes with the help of NFC cards, a Raspberry Pi and some buttons.")
+	app     = kingpin.New("rpi-nfc-player", "Music player that plays Deezer albums on a Sonos speaker with the help of NFC cards, a Raspberry Pi and some buttons.")
 	debug   = app.Flag("debug", "Turn on debug logging.").Bool()
 	start   = app.Command("start", "Start the music player and start listening for NFC cards.")
 	speaker = start.Flag("speaker", "The name of the speaker that the player should control.").Required().String()
