@@ -12,7 +12,7 @@ require (
 	github.com/jdevelop/gpio v0.0.0-20180116031910-0e2cc992019a
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
 	github.com/sirupsen/logrus v1.3.0
-	github.com/stretchr/testify v1.3.0
+	github.com/stretchr/testify v1.3.0 // indirect
 	github.com/tidwall/btree v0.0.0-20170113224114-9876f1454cf0 // indirect
 	github.com/tidwall/buntdb v1.0.0
 	github.com/tidwall/gjson v1.1.5 // indirect

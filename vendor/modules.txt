@@ -3,8 +3,6 @@ github.com/alecthomas/template
 github.com/alecthomas/template/parse
 # github.com/alecthomas/units v0.0.0-20151022065526-2efee857e7cf
 github.com/alecthomas/units
-# github.com/davecgh/go-spew v1.1.1
-github.com/davecgh/go-spew/spew
 # github.com/ecc1/gpio v0.0.0-20171107174639-450ac9ea6df7
 github.com/ecc1/gpio
 # github.com/ecc1/spi v0.0.0-20180427171038-91ea03fbebdc
@@ -29,12 +27,8 @@ github.com/jdevelop/gpio/rpi
 github.com/konsorten/go-windows-terminal-sequences
 # github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
 github.com/nfnt/resize
-# github.com/pmezard/go-difflib v1.0.0
-github.com/pmezard/go-difflib/difflib
 # github.com/sirupsen/logrus v1.3.0
 github.com/sirupsen/logrus
-# github.com/stretchr/testify v1.3.0
-github.com/stretchr/testify/assert
 # github.com/tidwall/btree v0.0.0-20170113224114-9876f1454cf0
 github.com/tidwall/btree
 # github.com/tidwall/buntdb v1.0.0
