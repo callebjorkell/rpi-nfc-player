@@ -4,7 +4,7 @@ speaker system using NFC cards.
 
 ![Tiger player](tigerplayer.png)
 
-The main motivation for making this was to allow my kids to easily be able to choose themselves what music to play on 
+The main motivation for making this was to allow my kids to easily choose themselves what music to play on 
 the Sonos speaker we have set up in their room, and when. I didn't want to just let them loose on a tablet/phone with
 the full Deezer catalogue at this point, and I also wanted something that was more fun and easy to use. Enter the Tiger
 player.
@@ -72,7 +72,7 @@ to work. The other can be run on any machine that can execute the go binary (and
 If you feel like contributing with bug fixes or feature additions, PRs are welcome :yum:.
 
 ## Credits
-To be able to put all of this together, I've relied on many many search results from duckduckgo, but most importantly
+To be able to put all of this together, I've relied on many _many_ search results from duckduckgo, but most importantly
 the following:
 
 * Craig Duncan for his [Sonos PHP library](https://github.com/duncan3dc/sonos). Without this one I would either have
