@@ -7,24 +7,40 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func addAlbum(id uint32) {
-	a, err := deezer.AlbumInfo(fmt.Sprint(id))
+func addAlbum(id uint64) {
+	a, err := deezer.GetAlbum(fmt.Sprint(id))
 	if err != nil {
 		log.Error(err)
 		return
 	}
 
-	var cardId string
-	if *albumCardId != "" {
-		cardId = *albumCardId
+	cardId := getCardId()
+	p := sonos.FromAlbum(a, cardId)
+
+	db.StoreCard(p)
+}
+
+func addPlaylist(id uint64) {
+	p, err := deezer.GetPlaylist(fmt.Sprint(id))
+	if err != nil {
+		log.Error(err)
+		return
+	}
+
+	cardId := getCardId()
+	pl := sonos.FromPlaylist(p, cardId)
+
+	db.StoreCard(pl)
+}
+
+func getCardId() string {
+	if *addCardId != "" {
+		return *addCardId
 	} else {
 		id, err := readSingleCard()
 		if err != nil {
 			log.Fatal(err)
 		}
-		cardId = id
+		return id
 	}
-	p := sonos.FromAlbum(a, cardId)
-
-	db.StoreCard(*p)
 }

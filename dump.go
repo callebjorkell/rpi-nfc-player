@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/callebjorkell/rpi-nfc-player/deezer"
 	log "github.com/sirupsen/logrus"
-	"strconv"
 )
 
 func dumpAll() {
@@ -14,13 +13,20 @@ func dumpAll() {
 	}
 
 	if len(*c) > 0 {
-		fmt.Println("            ID │   AlbumId   │ PlaylistId │ Tracks ")
-		fmt.Println("───────────────┼─────────────┼────────────┼────────")
+		fmt.Println("            ID │   AlbumId   │   PlaylistId    │ Tracks ")
+		fmt.Println("───────────────┼─────────────┼─────────────────┼────────")
 	} else {
 		fmt.Println("No cards found in the database...")
 	}
 	for _, card := range *c {
-		fmt.Printf("%14v │ %11v │ %10v │ %4v \n", card.ID, *card.AlbumID, card.PlaylistID, len(card.Tracks))
+		var album, playlist string
+		if card.AlbumID != nil {
+			album = fmt.Sprintf("%v", *card.AlbumID)
+		}
+		if card.PlaylistID != nil {
+			playlist = fmt.Sprintf("%v", *card.PlaylistID)
+		}
+		fmt.Printf("%14v │ %11v │ %15v │ %4v \n", card.ID, album, playlist, len(card.Tracks))
 	}
 }
 
@@ -40,7 +46,7 @@ func dumpCard(cardId string) {
 	}
 
 	if *dumpInfo {
-		a, err := deezer.AlbumInfo(strconv.Itoa(*p.AlbumID))
+		a, err := deezer.GetAlbum(fmt.Sprintf("%v", *p.AlbumID))
 		if err != nil {
 			log.Error(err)
 			return

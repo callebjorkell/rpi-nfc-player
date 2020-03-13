@@ -3,16 +3,20 @@ package deezer
 import (
 	"encoding/json"
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 )
 
-const searchBase = "https://api.deezer.com/search/album?q="
+const (
+	searchBase = "https://api.deezer.com/search"
+)
 
-type searchContent struct {
+type SearchContent struct {
 	Data []struct {
 		Id     int    `json:"id"`
+		Type   string `json:"type"`
 		Title  string `json:"title"`
 		Artist struct {
 			Name string `json:"name"`
@@ -21,15 +25,31 @@ type searchContent struct {
 	Total int `json:"total"`
 }
 
-func AlbumSearch(queryString string) (*searchContent, error) {
-	u := fmt.Sprintf("%s%s", searchBase, url.QueryEscape(queryString))
+func Search(queryString string) (*SearchContent, error) {
+	albums, err := search(fmt.Sprintf("%s/album?q=%s", searchBase, url.QueryEscape(queryString)))
+	if err != nil {
+		return nil, err
+	}
+	playlists, err := search(fmt.Sprintf("%s/playlist?q=%s", searchBase, url.QueryEscape(queryString)))
+	if err != nil {
+		return nil, err
+	}
+
+	return &SearchContent{
+		Data:  append(albums.Data, playlists.Data...),
+		Total: albums.Total + playlists.Total,
+	}, nil
+}
+
+func search(u string) (*SearchContent, error) {
+	log.Debug("Searching on ", u)
 	res, err := http.DefaultClient.Get(u)
 	if err != nil {
 		return nil, err
 	}
 	defer res.Body.Close()
 
-	c := new(searchContent)
+	c := new(SearchContent)
 	body, _ := ioutil.ReadAll(res.Body)
 	if err := json.Unmarshal(body, &c); err != nil {
 		return nil, err

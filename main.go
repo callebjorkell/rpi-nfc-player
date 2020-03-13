@@ -24,9 +24,10 @@ var (
 	start   = app.Command("start", "Start the music player and start listening for NFC cards.")
 	speaker = start.Flag("speaker", "The name of the speaker that the player should control.").Required().String()
 
-	add         = app.Command("add", "Construct and add a new playlist to a card.")
-	albumId     = add.Arg("id", "The ID of the album that should be added.").Required().Uint32()
-	albumCardId = add.Flag("cardId", "Manually specify the card id to be used.").String()
+	add           = app.Command("add", "Construct and add a new playlist to a card.")
+	addAlbumId    = add.Flag("albumId", "The ID of the album that should be added.").Uint64()
+	addPlaylistId = add.Flag("playlistId", "The ID of the playlist that should be added.").Uint64()
+	addCardId     = add.Flag("cardId", "Manually specify the card id to be used.").String()
 
 	dump       = app.Command("dump", "Read a card and dump all the available information onto standard out.")
 	dumpCardId = dump.Flag("cardId", "Manually specify the card id to be used.").String()
@@ -36,10 +37,11 @@ var (
 	search       = app.Command("search", "Search for albums on deezer")
 	searchString = search.Arg("query", "The string to search on.").Required().String()
 
-	label        = app.Command("label", "Create a label for a card.")
-	labelAlbumId = label.Flag("id", "The id of the album that should be created. If not provided, a card will be requested.").Uint32()
-	labelCardId  = label.Flag("cardId", "Manually specify the card that the label should be printed for.").String()
-	sheet        = label.Flag("sheet", "Render all labels in the database onto A4 sized sheets for batch printing. Using this ignores the cardId and id flags if set.").Bool()
+	label           = app.Command("label", "Create a label for a card.")
+	labelAlbumId    = label.Flag("albumId", "The id of the album that should be created. If not provided, a card will be requested.").Uint64()
+	labelPlaylistId = label.Flag("playlistId", "The id of the playlist that should be created. If not provided, a card will be requested.").Uint64()
+	labelCardId     = label.Flag("cardId", "Manually specify the card that the label should be printed for.").String()
+	sheet           = label.Flag("sheet", "Render all labels in the database onto A4 sized sheets for batch printing. Using this ignores the cardId and id flags if set.").Bool()
 )
 
 func main() {
@@ -71,7 +73,13 @@ func main() {
 	case start.FullCommand():
 		startServer()
 	case add.FullCommand():
-		addAlbum(*albumId)
+		if *addAlbumId != 0 {
+			addAlbum(*addAlbumId)
+		} else if *addPlaylistId != 0 {
+			addPlaylist(*addPlaylistId)
+		} else {
+			kingpin.FatalUsage("One of albumid or playlistid must be specified")
+		}
 	case dump.FullCommand():
 		if *dumpList == true {
 			dumpAll()
@@ -207,7 +215,7 @@ func handleCard(card *nfc.CardEvent, lastActive string, led *ui.ColorLed, speake
 					CurrentPosition: state.RelTime,
 				}
 
-				if err := db.StoreCard(p); err != nil {
+				if err := db.StoreCard(&p); err != nil {
 					log.Warn("Could not update playlist state: ", err)
 				} else {
 					log.Debugf("Updated card %v with state %v", lastActive, p.State)

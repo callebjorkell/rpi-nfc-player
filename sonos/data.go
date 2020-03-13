@@ -21,9 +21,9 @@ type Playlist struct {
 	// The ID of the card itself
 	ID string `json:"id"`
 	// AlbumID contains the Deezer album ID if applicable
-	AlbumID *int `json:"albumId,omitempty"`
+	AlbumID *uint64 `json:"albumId,omitempty"`
 	// PlaylistID contains the Deezer playlist ID if applicable
-	PlaylistID *int `json:"playlistId,omitempty"`
+	PlaylistID *uint64 `json:"playlistId,omitempty"`
 	// Tracks is the collection of tracks that should be played when this card is detected.
 	Tracks []Track `json:"tracks"`
 	// State is the last seen state of the card. If none exists, the state will be nil.
@@ -61,14 +61,28 @@ func FromAlbum(album *deezer.Album, cardId string) *Playlist {
 	for _, trackId := range album.Tracks() {
 		tracks = append(tracks, makeTrack(trackId))
 	}
-	var albumId int
-	albumId = album.Id
+	albumId := album.Identifier
 	return &Playlist{
 		ID:         cardId,
 		AlbumID:    &albumId,
 		State:      nil,
 		Tracks:     tracks,
 		PlaylistID: nil,
+	}
+}
+
+func FromPlaylist(p *deezer.Playlist, cardId string) *Playlist {
+	var tracks []Track
+	for _, trackId := range p.Tracks() {
+		tracks = append(tracks, makeTrack(trackId))
+	}
+	playlistId := p.Identifier
+	return &Playlist{
+		ID:         cardId,
+		PlaylistID: &playlistId,
+		State:      nil,
+		Tracks:     tracks,
+		AlbumID:    nil,
 	}
 }
 

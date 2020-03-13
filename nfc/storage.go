@@ -34,7 +34,7 @@ func (db *DB) Close() error {
 	return db.instance.Close()
 }
 
-func (db *DB) StoreCard(c sonos.Playlist) error {
+func (db *DB) StoreCard(c *sonos.Playlist) error {
 	return db.instance.Update(func(tx *buntdb.Tx) error {
 		data, err := json.Marshal(c)
 		if err != nil {

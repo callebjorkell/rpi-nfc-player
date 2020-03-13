@@ -5,29 +5,41 @@ import (
 	"github.com/callebjorkell/rpi-nfc-player/deezer"
 	log "github.com/sirupsen/logrus"
 	"os"
-	"strconv"
 )
 
 func createSheet() {
 	cards, err := db.ReadAll()
-	var ids []string
+	var lists []deezer.TrackList
 	if err == nil {
 		for _, card := range *cards {
 			if card.AlbumID != nil && *card.AlbumID > 0 {
-				ids = append(ids, strconv.Itoa(*card.AlbumID))
+				a, err := getAlbum(*card.AlbumID)
+				if err != nil {
+					log.Warn(err)
+					continue
+				}
+				lists = append(lists, a)
+			}
+			if card.PlaylistID != nil && *card.PlaylistID > 0 {
+				p, err := getPlaylist(*card.PlaylistID)
+				if err != nil {
+					log.Warn(err)
+					continue
+				}
+				lists = append(lists, p)
 			}
 		}
 	}
 
 	step := deezer.LabelsPerSheet
-	for i := 0; i*step < len(ids); i++ {
+	for i := 0; i*step < len(lists); i++ {
 		f, err := os.Create(fmt.Sprintf("sheet%v.png", i))
 		if err != nil {
 			panic(err)
 		}
 
 		index := i * step
-		if err := deezer.CreateLabelSheet(ids[index:min(index+step, len(ids))], f); err != nil {
+		if err := deezer.CreateLabelSheet(lists[index:min(index+step, len(lists))], f); err != nil {
 			panic(err)
 		}
 		f.Close()
@@ -40,14 +52,19 @@ func createLabel() {
 		return
 	}
 
-	id := getLabelAlbumId(*labelAlbumId, *labelCardId)
-
-	generateLabel(id)
+	trackList, err := getLabelTrackList(labelAlbumId, labelPlaylistId, *labelCardId)
+	if err != nil {
+		log.Fatal(err)
+	}
+	generateLabel(trackList)
 }
 
-func getLabelAlbumId(givenAlbumId uint32, cardId string) uint32 {
-	if givenAlbumId > 0 {
-		return givenAlbumId
+func getLabelTrackList(givenAlbumId, givenPlaylistId *uint64, cardId string) (deezer.TrackList, error) {
+	if givenAlbumId != nil && *givenAlbumId > 0 {
+		return getAlbum(*givenAlbumId)
+	}
+	if givenPlaylistId != nil && *givenPlaylistId > 0 {
+		return getPlaylist(*givenPlaylistId)
 	}
 
 	if cardId == "" {
@@ -61,15 +78,26 @@ func getLabelAlbumId(givenAlbumId uint32, cardId string) uint32 {
 	card, err := db.ReadCard(cardId)
 	if err == nil {
 		if card.AlbumID != nil && *card.AlbumID > 0 {
-			return uint32(*card.AlbumID)
+			return getAlbum(*card.AlbumID)
+		}
+		if card.PlaylistID != nil && *card.PlaylistID > 0 {
+			return getPlaylist(*card.PlaylistID)
 		}
 	}
-	panic(fmt.Errorf("couldn't get a card with id %v", cardId))
+	return nil, fmt.Errorf("couldn't get a card with id %v", cardId)
 }
 
-func generateLabel(id uint32) {
-	file := fmt.Sprintf("%v.png", id)
-	log.Infof("Generating label for album %v into %v", albumId, file)
+func getPlaylist(id uint64) (deezer.TrackList, error) {
+	return deezer.GetPlaylist(fmt.Sprintf("%v", id))
+}
+
+func getAlbum(id uint64) (deezer.TrackList, error) {
+	return deezer.GetAlbum(fmt.Sprintf("%v", id))
+}
+
+func generateLabel(t deezer.TrackList) {
+	file := fmt.Sprintf("%v.png", t.Id())
+	log.Infof("Generating label for %v into %v", t.Id(), file)
 
 	f, err := os.Create(file)
 	if err != nil {
@@ -77,7 +105,7 @@ func generateLabel(id uint32) {
 	}
 	defer f.Close()
 
-	if err := deezer.CreateLabel(fmt.Sprintf("%d", id), f); err != nil {
+	if err := deezer.CreateLabel(t, f); err != nil {
 		panic(err)
 	}
 }
