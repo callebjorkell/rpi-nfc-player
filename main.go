@@ -23,6 +23,7 @@ var (
 	debug   = app.Flag("debug", "Turn on debug logging.").Bool()
 	start   = app.Command("start", "Start the music player and start listening for NFC cards.")
 	speaker = start.Flag("speaker", "The name of the speaker that the player should control.").Required().String()
+	refresh = start.Flag("refresh", "Refresh playlist/album content from deezer with regular intervals.").Default("false").Bool()
 
 	add           = app.Command("add", "Construct and add a new playlist to a card.")
 	addAlbumId    = add.Flag("albumId", "The ID of the album that should be added.").Uint64()
@@ -74,9 +75,9 @@ func main() {
 		startServer()
 	case add.FullCommand():
 		if *addAlbumId != 0 {
-			addAlbum(*addAlbumId)
+			storeAlbum(*addAlbumId, *addCardId)
 		} else if *addPlaylistId != 0 {
-			addPlaylist(*addPlaylistId)
+			storePlaylist(*addPlaylistId, *addCardId)
 		} else {
 			kingpin.FatalUsage("One of albumid or playlistid must be specified")
 		}
@@ -120,8 +121,40 @@ func readSingleCard() (string, error) {
 	}
 }
 
+func refreshCards() {
+	log.Debug("Starting card refresh loop")
+	for {
+		log.Info("Refreshing card entries")
+		entries, err := db.ReadAll()
+		if err != nil {
+			log.Error("Encountered an error, will retry: ", err)
+			<- time.After(10 * time.Minute)
+			continue
+		}
+
+		for _, e := range *entries {
+			if e.AlbumID != nil {
+				log.Debug("Refreshing album ", *e.AlbumID)
+				storeAlbum(*e.AlbumID, e.ID)
+			} else if e.PlaylistID != nil {
+				log.Debug("Refreshing playlist ", *e.PlaylistID)
+				storePlaylist(*e.PlaylistID, e.ID)
+			} else {
+				log.Warn("Cannot refresh data for ", e)
+			}
+
+			//don't spam the APIs
+			<- time.After(250 * time.Millisecond)
+		}
+		<- time.After(24 * time.Hour)
+	}
+}
+
 func startServer() {
 	s, err := sonos.New(*speaker)
+	if *refresh {
+		go refreshCards()
+	}
 	if err != nil {
 		log.Fatal(err)
 	}
