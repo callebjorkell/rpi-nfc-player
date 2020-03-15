@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"github.com/callebjorkell/rpi-nfc-player/deezer"
 	"github.com/callebjorkell/rpi-nfc-player/nfc"
 	"github.com/callebjorkell/rpi-nfc-player/sonos"
 	"github.com/callebjorkell/rpi-nfc-player/ui"
@@ -23,8 +24,9 @@ var (
 	debug   = app.Flag("debug", "Turn on debug logging.").Bool()
 	start   = app.Command("start", "Start the music player and start listening for NFC cards.")
 	speaker = start.Flag("speaker", "The name of the speaker that the player should control.").Required().String()
-	refresh = start.Flag("refresh", "Refresh playlist/album content from deezer with regular intervals.").Default("false").Bool()
+	refresh = start.Flag("refresh", "Refresh playlist content from deezer on startup.").Default("false").Bool()
 
+	check         = app.Command("check", "Check all album/playlist entries and show problems.")
 	add           = app.Command("add", "Construct and add a new playlist to a card.")
 	addAlbumId    = add.Flag("albumId", "The ID of the album that should be added.").Uint64()
 	addPlaylistId = add.Flag("playlistId", "The ID of the playlist that should be added.").Uint64()
@@ -91,6 +93,8 @@ func main() {
 		searchAlbum()
 	case label.FullCommand():
 		createLabel()
+	case check.FullCommand():
+		checkEntries()
 	default:
 		kingpin.FatalUsage("Unrecognized command")
 	}
@@ -121,10 +125,41 @@ func readSingleCard() (string, error) {
 	}
 }
 
-func refreshCards() {
-	log.Debug("Starting card refresh loop")
+func checkEntries() {
+	log.Debug("Checking entries")
+	entries, err := db.ReadAll()
+	if err != nil {
+		log.Error(err)
+		return
+	}
+
+	for _, e := range *entries {
+		if e.AlbumID != nil {
+			_, err := deezer.GetAlbum(fmt.Sprint(*e.AlbumID))
+			if err != nil {
+				fmt.Printf("FAIL %15s (album %v): %v\n", e.ID, *e.AlbumID, err)
+			} else {
+				fmt.Printf("OK   %15s (album %v)\n", e.ID, *e.AlbumID)
+			}
+		} else if e.PlaylistID != nil {
+			_, err := deezer.GetPlaylist(fmt.Sprint(*e.PlaylistID))
+			if err != nil {
+				fmt.Printf("FAIL %15s (playlist %v): %v\n", e.ID, *e.PlaylistID, err)
+			} else {
+				fmt.Printf("OK   %15s (playlist %v)\n", e.ID, *e.PlaylistID)
+			}
+		} else {
+			fmt.Printf("FAIL %15s: Has no album/playlist ID.\n", e.ID)
+		}
+
+		<-time.After(100 * time.Millisecond)
+	}
+}
+
+func refreshPlaylists() {
+	log.Debug("Starting playlist refresh loop")
 	for {
-		log.Info("Refreshing card entries")
+		log.Info("Refreshing playlist entries")
 		entries, err := db.ReadAll()
 		if err != nil {
 			log.Error("Encountered an error, will retry: ", err)
@@ -133,14 +168,18 @@ func refreshCards() {
 		}
 
 		for _, e := range *entries {
-			if e.AlbumID != nil {
-				log.Debug("Refreshing album ", *e.AlbumID)
-				storeAlbum(*e.AlbumID, e.ID)
-			} else if e.PlaylistID != nil {
+			if e.PlaylistID != nil {
 				log.Debug("Refreshing playlist ", *e.PlaylistID)
-				storePlaylist(*e.PlaylistID, e.ID)
-			} else {
-				log.Warn("Cannot refresh data for ", e)
+				p, err := deezer.GetPlaylist(fmt.Sprint(*e.PlaylistID))
+				if err != nil {
+					log.Error(err)
+					return
+				}
+
+				pl := sonos.FromPlaylist(p, e.ID)
+				pl.State = e.State
+
+				db.StoreCard(pl)
 			}
 
 			//don't spam the APIs
@@ -153,7 +192,7 @@ func refreshCards() {
 func startServer() {
 	s, err := sonos.New(*speaker)
 	if *refresh {
-		go refreshCards()
+		go refreshPlaylists()
 	}
 	if err != nil {
 		log.Fatal(err)
