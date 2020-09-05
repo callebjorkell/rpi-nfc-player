@@ -1,10 +1,11 @@
+//+build pi
+
 package nfc
 
 import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"sync"
 	"time"
 
@@ -24,27 +25,11 @@ import (
  * for MIFARE cards like the Ultralight that requires a L2 AntiColl to fetch the full ID.
  */
 
-const (
-	Activated   CardState = 0
-	Deactivated CardState = 1
-)
-
 var (
 	NoCardErr = errors.New("no card detected")
 	stateLock sync.Mutex
-	active bool
+	active    bool
 )
-
-type CardState int
-type CardEvent struct {
-	CardID string
-	State  CardState
-}
-
-type CardReader interface {
-	io.Closer
-	Events() <-chan CardEvent
-}
 
 type rfid struct {
 	ResetPin    gpio.Pin

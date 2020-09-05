@@ -17,7 +17,9 @@ import (
 	"time"
 )
 
-var db = nfc.GetDB()
+var tigerArmed = false
+var playing = false
+var db = GetDB()
 
 var (
 	app     = kingpin.New("rpi-nfc-player", "Music player that plays Deezer albums on a Sonos speaker with the help of NFC cards, a Raspberry Pi and some buttons.")
@@ -163,7 +165,7 @@ func refreshPlaylists() {
 		entries, err := db.ReadAll()
 		if err != nil {
 			log.Error("Encountered an error, will retry: ", err)
-			<- time.After(10 * time.Minute)
+			<-time.After(10 * time.Minute)
 			continue
 		}
 
@@ -183,9 +185,9 @@ func refreshPlaylists() {
 			}
 
 			//don't spam the APIs
-			<- time.After(250 * time.Millisecond)
+			<-time.After(250 * time.Millisecond)
 		}
-		<- time.After(24 * time.Hour)
+		<-time.After(24 * time.Hour)
 	}
 }
 
@@ -203,7 +205,7 @@ func startServer() {
 
 	checkTiger := tigerCheck(tiger, led)
 	checkTiger()
-	play := false
+	playing = false
 	playSync := &sync.Mutex{}
 
 	go func() {
@@ -216,7 +218,7 @@ func startServer() {
 				}
 
 				playSync.Lock()
-				handleButton(&b, play, tiger, led, s)
+				handleButton(&b, playing, tiger, led, s)
 				playSync.Unlock()
 			case <-time.After(time.Second):
 				// allow the scheduler to run
@@ -237,17 +239,16 @@ func startServer() {
 		}
 
 		playSync.Lock()
-		play = isPlaying(&card)
-		playSync.Unlock()
-
+		// used to track weather the tiger should be activated or not.
+		playing = isPlaying(&card)
 		handleCard(&card, lastActive, led, s)
 
-		// should not need to lock here, since the state is not written other than above in this same loop.
-		if play {
+		if playing {
 			lastActive = card.CardID
 		} else {
 			checkTiger()
 		}
+		playSync.Unlock()
 	}
 }
 
@@ -255,7 +256,7 @@ func isPlaying(event *nfc.CardEvent) bool {
 	return event.State == nfc.Activated
 }
 
-func handleCard(card *nfc.CardEvent, lastActive string, led *ui.ColorLed, speaker *sonos.SonosSpeaker) {
+func handleCard(card *nfc.CardEvent, lastActive string, led ui.ColorLed, speaker *sonos.SonosSpeaker) {
 	if card.State == nfc.Activated {
 		log.Infof("Card %v activated", card.CardID)
 		led.Purple()
@@ -299,7 +300,7 @@ func handleCard(card *nfc.CardEvent, lastActive string, led *ui.ColorLed, speake
 	}
 }
 
-func handleButton(b *ui.ButtonEvent, playing bool, tiger *ui.Tiger, led *ui.ColorLed, speaker *sonos.SonosSpeaker) {
+func handleButton(b *ui.ButtonEvent, playing bool, tiger ui.Tiger, led ui.ColorLed, speaker *sonos.SonosSpeaker) {
 	log.Debugln(b)
 	switch b.Button {
 	case ui.TigerSwitch:
@@ -308,7 +309,9 @@ func handleButton(b *ui.ButtonEvent, playing bool, tiger *ui.Tiger, led *ui.Colo
 				tiger.On()
 				led.Red()
 			}
+			tigerArmed = true
 		} else {
+			tigerArmed = false
 			tiger.Off()
 			if playing {
 				led.Green()
@@ -333,9 +336,9 @@ func handleButton(b *ui.ButtonEvent, playing bool, tiger *ui.Tiger, led *ui.Colo
 	}
 }
 
-func tigerCheck(tiger *ui.Tiger, led *ui.ColorLed) func() {
+func tigerCheck(tiger ui.Tiger, led ui.ColorLed) func() {
 	return func() {
-		if ui.IsPressed(ui.TigerSwitch) {
+		if tigerArmed {
 			log.Info("Tiger switched on already, enabling tiger.")
 			led.Red()
 			tiger.On()

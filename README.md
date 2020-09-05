@@ -22,7 +22,7 @@ And then of course wire, glue, and the equipment/supplies needed for soldering a
 
 ### How does it work?
 The RFID reader is glued to the underside of the lid of the box. The range of NFC is not great, but it does make it
-through the thin wooden lid of the box. Whenever one of the NFC cards are being put on top of the lid, the reader picks
+through the thin wooden lid of the box. Whenever one of the NFC cards is put on top of the lid, the reader picks
 up the ID and uses it to fetch the corresponding playlist from a [BuntDB](https://github.com/tidwall/buntdb) database.
 The playlist is then submitted over UPnP to the Sonos speaker which starts playing the song(s). The two buttons on the
 front can be used to skip to the next or previous tracks. When the card is removed from the lid, the playback on the
@@ -31,15 +31,21 @@ Sonos speaker is stopped.
 ## Building the code
 To cross compile the go code to be run on the Raspberry Pi Zero W, issue:
 ```bash
-$ GOOS=linux GOARCH=arm GOARM=5 go build
+$ GOOS=linux GOARCH=arm GOARM=5 go build -tags=pi
+```
+To build a cut down version that removes the hardware requirements on running on a Raspberry Pi with the RFID reader,
+the binary can also be built witout build tags. This will generate some dummy button events, and log interactions with
+the tiger and LED. Interaction with the sonos speaker is intact. 
+```bash
+$ go build
 ```
 
 ## Usage
 ```
 usage: rpi-nfc-player [<flags>] <command> [<args> ...]
 
-Music player that plays Deezer albums on a Sonos speaker with the help of NFC
-cards, a Raspberry Pi and some buttons.
+Music player that plays Deezer albums on a Sonos speaker with the help of NFC cards, a Raspberry Pi and
+some buttons.
 
 Flags:
   --help   Show context-sensitive help (also try --help-long and --help-man).
@@ -52,7 +58,10 @@ Commands:
   start --speaker=SPEAKER
     Start the music player and start listening for NFC cards.
 
-  add [<flags>] <id>
+  check
+    Check all album/playlist entries and show problems.
+
+  add [<flags>]
     Construct and add a new playlist to a card.
 
   dump [<flags>]

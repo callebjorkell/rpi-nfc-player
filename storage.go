@@ -1,4 +1,4 @@
-package nfc
+package main
 
 import (
 	"encoding/json"

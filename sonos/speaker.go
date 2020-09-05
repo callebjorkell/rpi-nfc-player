@@ -7,6 +7,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"strconv"
 	"strings"
+	"time"
 )
 
 /*
@@ -33,12 +34,14 @@ func New(name string) (*SonosSpeaker, error) {
 	if err != nil {
 		logrus.Fatal(err)
 	}
+	logrus.Debugf("Inspecting %v devices", len(d))
 	for _, dev := range d {
 		root, err := goupnp.DeviceByURL(dev.Location)
 		if err != nil {
 			logrus.Errorf("Could not retrieve %v, speaker went away?", dev.Location)
 			continue
 		}
+		logrus.Debugf("Checking device: %v", root.Device.FriendlyName)
 
 		s, err := getService(root, "DeviceProperties")
 		if err != nil {
@@ -72,6 +75,7 @@ func New(name string) (*SonosSpeaker, error) {
 }
 
 func (s *SonosSpeaker) SetPlaylist(playlist Playlist) {
+	start := time.Now()
 	s.Clear()
 
 	// chunk the queue in 16 item chunks to allow them to be added to sonos without errors.
@@ -92,6 +96,7 @@ func (s *SonosSpeaker) SetPlaylist(playlist Playlist) {
 		logrus.Debugf("Resuming the previous state from track %v", playlist.State.CurrentTrack)
 		s.SetTrack(playlist.State.CurrentTrack)
 	}
+	logrus.Infof("Added %v tracks to the playlist in %v", len(playlist.Tracks), time.Now().Sub(start))
 }
 
 func (s *SonosSpeaker) SetTrack(position int) {
@@ -164,7 +169,9 @@ func (s *SonosSpeaker) addChunk(tracks []Track, index int) {
 	}{
 		"0", strconv.Itoa(len(tracks)), uri.String(), metadata.String(), strconv.Itoa(index), "0", "Q:0", "0",
 	}
-	s.control.Action("AddMultipleURIsToQueue", in, nil)
+	if err := s.control.Action("AddMultipleURIsToQueue", in, nil); err != nil {
+		logrus.Warn("Could not queue the playlist: ", err)
+	}
 }
 
 func (s *SonosSpeaker) Play() {
