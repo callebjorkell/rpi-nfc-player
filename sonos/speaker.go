@@ -7,7 +7,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"strconv"
 	"strings"
-	"time"
 )
 
 /*
@@ -21,6 +20,7 @@ type SonosSpeaker struct {
 	content *service
 	info    *service
 	name    string
+	uid     string
 }
 
 type State struct {
@@ -68,18 +68,96 @@ func New(name string) (*SonosSpeaker, error) {
 				content,
 				s,
 				name,
+				root.Device.UDN[5:], // trim away the "uuid:" prefix
 			}, nil
 		}
 	}
 	return nil, fmt.Errorf("no speakers found for zone %v", name)
 }
 
+func (s *SonosSpeaker) setAVTransportToQueue() {
+	in := struct {
+		InstanceID         string
+		CurrentURI         string
+		CurrentURIMetaData string
+	}{
+		"0",
+		fmt.Sprintf("x-rincon-queue:%v#0", s.uid),
+		"",
+	}
+
+	if err := s.control.Action("SetAVTransportURI", in, nil); err != nil {
+		logrus.Warn("Could not properly set the queue as the AV soure: ", err)
+	}
+}
+
+// SetPlaylist clears the queue and then adds the given playlist for the speaker. Will use the order:
+// * Album
+// * Playlist
+// * Tracks
+// and use the first one that has been set. Repeat will also be set.
 func (s *SonosSpeaker) SetPlaylist(playlist Playlist) {
-	start := time.Now()
 	s.Clear()
 
+	if playlist.AlbumID != nil {
+		s.playAlbum(*playlist.AlbumID)
+	} else if playlist.PlaylistID != nil {
+		s.playPlaylist(*playlist.PlaylistID)
+	} else if len(playlist.Tracks) > 0 {
+		s.playTracks(playlist.Tracks)
+	} else {
+		logrus.Errorf("No content for playlist %v. Try to re-provision it?", playlist.ID)
+	}
+
+	s.setAVTransportToQueue()
+
+	s.SetRepeat(true)
+
+	if playlist.State != nil {
+		logrus.Debugf("Resuming the previous state from track %v", playlist.State.CurrentTrack)
+		s.Seek(playlist.State.CurrentTrack)
+	}
+}
+
+func (s *SonosSpeaker) playAlbum(id uint64) {
+	logrus.Debug("Queueing album ", id)
+	m, err := CreateAlbumMetadata(id)
+	if err != nil {
+		logrus.Warn("Unable to generate DIDL: ", err)
+		return
+	}
+	uri := fmt.Sprintf("x-rincon-cpcontainer:0004206calbum-%v", id)
+	s.enqueue(uri, m)
+}
+
+func (s *SonosSpeaker) playPlaylist(id uint64) {
+	logrus.Debug("Queueing playlist ", id)
+	m, err := CreatePlaylistMetadata(id)
+	if err != nil {
+		logrus.Warn("Unable to generate DIDL: ", err)
+		return
+	}
+	uri := fmt.Sprintf("x-rincon-cpcontainer:0006206cplaylist_spotify%%3aplaylist-%v", id)
+	s.enqueue(uri, m)
+}
+
+func (s *SonosSpeaker) enqueue(uri string, m []byte) {
+	in := struct {
+		InstanceID                      string
+		EnqueuedURI                     string
+		EnqueuedURIMetaData             string
+		DesiredFirstTrackNumberEnqueued string
+		EnqueueAsNext                   string
+	}{
+		"0", uri, string(m), "0", "0",
+	}
+	s.control.Action("AddURIToQueue", in, nil)
+}
+
+func (s *SonosSpeaker) playTracks(tracks []Track) {
+	logrus.Debugf("Queueing %v tracks", len(tracks))
 	// chunk the queue in 16 item chunks to allow them to be added to sonos without errors.
-	pLen := len(playlist.Tracks)
+	pLen := len(tracks)
 	const cSize = 16
 
 	for i := 0; i < pLen; i += cSize {
@@ -87,19 +165,68 @@ func (s *SonosSpeaker) SetPlaylist(playlist Playlist) {
 		if l > pLen {
 			l = pLen
 		}
-		s.addChunk(playlist.Tracks[i:l], i+1)
+		s.addChunk(tracks[i:l])
 	}
-
-	s.SetRepeat(true)
-
-	if playlist.State != nil {
-		logrus.Debugf("Resuming the previous state from track %v", playlist.State.CurrentTrack)
-		s.SetTrack(playlist.State.CurrentTrack)
-	}
-	logrus.Infof("Added %v tracks to the playlist in %v", len(playlist.Tracks), time.Now().Sub(start))
 }
 
-func (s *SonosSpeaker) SetTrack(position int) {
+// addChunk adds a chunk of tracks to the sonos speaker. Note that if this goes over 16 in size, there are probably going to be problems.
+func (s *SonosSpeaker) addChunk(tracks []Track) {
+	if len(tracks) == 0 {
+		return
+	}
+
+	uri := strings.Builder{}
+	metadata := strings.Builder{}
+	for i, track := range tracks {
+		if track.Location != Deezer {
+			panic("Only deezer is supported now")
+		}
+		m, err := CreateTrackMetadata(track.ID)
+		if err != nil {
+			panic(err)
+		}
+
+		u := fmt.Sprintf("x-sonos-http:tr:%v.mp3", track.ID)
+
+		if i != 0 {
+			//metadata.WriteString(" ")
+			uri.WriteString(" ")
+		}
+
+		metadata.Write(m)
+		uri.WriteString(u)
+	}
+
+	in := struct {
+		UpdateID                        string
+		NumberOfURIs                    string
+		EnqueuedURIs                    string
+		EnqueuedURIsMetaData            string
+		DesiredFirstTrackNumberEnqueued string
+		EnqueueAsNext                   string
+		InstanceID                      string
+	}{
+		"0", strconv.Itoa(len(tracks)), uri.String(), metadata.String(), "0", "0", "0",
+	}
+	if err := s.control.Action("AddMultipleURIsToQueue", in, nil); err != nil {
+		logrus.Warn("Could not queue the playlist: ", err)
+	}
+}
+
+func (s *SonosSpeaker) AddTrack(t Track) {
+	if t.Location != Deezer {
+		panic("Only deezer is supported now")
+	}
+	m, err := CreateTrackMetadata(t.ID)
+	if err != nil {
+		logrus.Warn("Unable to generate DIDL: ", err)
+		return
+	}
+	uri := fmt.Sprintf("x-sonos-http:tr:%v.mp3", t.ID)
+	s.enqueue(uri, m)
+}
+
+func (s *SonosSpeaker) Seek(position int) {
 	in := struct {
 		InstanceID string
 		Unit       string
@@ -127,51 +254,6 @@ func (s *SonosSpeaker) SetRepeat(repeat bool) {
 	}
 
 	s.control.Action("SetPlayMode", in, nil)
-}
-
-// addChunk adds a chunk of tracks to the sonos speaker. Note that if this goes over 16 in size, there are probably going to be problems.
-func (s *SonosSpeaker) addChunk(tracks []Track, index int) {
-	if len(tracks) == 0 {
-		return
-	}
-
-	uri := strings.Builder{}
-	metadata := strings.Builder{}
-	for i, track := range tracks {
-		if track.Location != Deezer {
-			panic("Only deezer is supported now")
-		}
-		m, err := CreateMetadata(track.ID)
-		if err != nil {
-			panic(err)
-		}
-
-		u := fmt.Sprintf("x-sonos-http:tr:%v.mp3", track.ID)
-
-		if i != 0 {
-			metadata.WriteString(" ")
-			uri.WriteString(" ")
-		}
-
-		metadata.Write(m)
-		uri.WriteString(u)
-	}
-
-	in := struct {
-		UpdateID                        string
-		NumberOfURIs                    string
-		EnqueuedURIs                    string
-		EnqueuedURIsMetaData            string
-		DesiredFirstTrackNumberEnqueued string
-		EnqueueAsNext                   string
-		ObjectID                        string
-		InstanceID                      string
-	}{
-		"0", strconv.Itoa(len(tracks)), uri.String(), metadata.String(), strconv.Itoa(index), "0", "Q:0", "0",
-	}
-	if err := s.control.Action("AddMultipleURIsToQueue", in, nil); err != nil {
-		logrus.Warn("Could not queue the playlist: ", err)
-	}
 }
 
 func (s *SonosSpeaker) Play() {

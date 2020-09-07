@@ -24,7 +24,7 @@ type Playlist struct {
 	AlbumID *uint64 `json:"albumId,omitempty"`
 	// PlaylistID contains the Deezer playlist ID if applicable
 	PlaylistID *uint64 `json:"playlistId,omitempty"`
-	// Tracks is the collection of tracks that should be played when this card is detected.
+	// Tracks is the collection of tracks that should be played when this card is detected. Is only used if the
 	Tracks []Track `json:"tracks"`
 	// State is the last seen state of the card. If none exists, the state will be nil.
 	State *PlaylistState `json:"state,omitempty"`
