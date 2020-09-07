@@ -64,6 +64,9 @@ Commands:
   add [<flags>]
     Construct and add a new playlist to a card.
 
+  remove [<flags>]
+    Remove a card from the database.
+
   dump [<flags>]
     Read a card and dump all the available information onto standard out.
 

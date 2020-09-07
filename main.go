@@ -33,6 +33,9 @@ var (
 	addPlaylistId = add.Flag("playlistId", "The ID of the playlist that should be added.").Uint64()
 	addCardId     = add.Flag("cardId", "Manually specify the card id to be used.").String()
 
+	remove       = app.Command("remove", "Remove a card from the database.")
+	removeCardId = remove.Flag("cardId", "Manually specify the card id to be used.").String()
+
 	dump       = app.Command("dump", "Read a card and dump all the available information onto standard out.")
 	dumpCardId = dump.Flag("cardId", "Manually specify the card id to be used.").String()
 	dumpInfo   = dump.Flag("albumInfo", "Dump information about the album the card points to instead of the data on the card.").Bool()
@@ -84,6 +87,8 @@ func main() {
 		} else {
 			kingpin.FatalUsage("One of albumid or playlistid must be specified")
 		}
+	case remove.FullCommand():
+		removeCard(*removeCardId)
 	case dump.FullCommand():
 		if *dumpList == true {
 			dumpAll()
