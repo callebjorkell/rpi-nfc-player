@@ -1,109 +1,136 @@
-# github.com/alecthomas/template v0.0.0-20160405071501-a0175ee3bccc
+# github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
+## explicit
 github.com/alecthomas/template
 github.com/alecthomas/template/parse
-# github.com/alecthomas/units v0.0.0-20151022065526-2efee857e7cf
+# github.com/alecthomas/units v0.0.0-20190924025748-f65c72e2690d
+## explicit
 github.com/alecthomas/units
-# github.com/ecc1/gpio v0.0.0-20171107174639-450ac9ea6df7
+# github.com/ecc1/gpio v0.0.0-20200212231225-d40e43fcf8f5
+## explicit
 github.com/ecc1/gpio
-# github.com/ecc1/spi v0.0.0-20180427171038-91ea03fbebdc
+# github.com/ecc1/spi v0.0.0-20200213193041-d21dfe67fe72
+## explicit
 github.com/ecc1/spi
-# github.com/fogleman/gg v1.2.0
+# github.com/fogleman/gg v1.3.0
+## explicit
 github.com/fogleman/gg
 # github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0
+## explicit
 github.com/golang/freetype/raster
 github.com/golang/freetype/truetype
 # github.com/huin/goupnp v1.0.0
+## explicit
 github.com/huin/goupnp
-github.com/huin/goupnp/soap
 github.com/huin/goupnp/httpu
 github.com/huin/goupnp/scpd
+github.com/huin/goupnp/soap
 github.com/huin/goupnp/ssdp
 # github.com/jdevelop/golang-rpi-extras v0.0.0-20181010003844-c75e8edb0d6f
+## explicit
 github.com/jdevelop/golang-rpi-extras/rf522/commands
 # github.com/jdevelop/gpio v0.0.0-20180116031910-0e2cc992019a
+## explicit
 github.com/jdevelop/gpio
 github.com/jdevelop/gpio/rpi
-# github.com/konsorten/go-windows-terminal-sequences v1.0.1
+# github.com/konsorten/go-windows-terminal-sequences v1.0.3
 github.com/konsorten/go-windows-terminal-sequences
+# github.com/kr/pretty v0.1.0
+## explicit
 # github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
+## explicit
 github.com/nfnt/resize
-# github.com/sirupsen/logrus v1.3.0
+# github.com/sirupsen/logrus v1.6.0
+## explicit
 github.com/sirupsen/logrus
-# github.com/tidwall/btree v0.0.0-20170113224114-9876f1454cf0
+# github.com/tidwall/btree v0.0.0-20191029221954-400434d76274
 github.com/tidwall/btree
-# github.com/tidwall/buntdb v1.0.0
+# github.com/tidwall/buntdb v1.1.2
+## explicit
 github.com/tidwall/buntdb
-# github.com/tidwall/gjson v1.1.5
+# github.com/tidwall/gjson v1.6.1
+## explicit
 github.com/tidwall/gjson
 # github.com/tidwall/grect v0.0.0-20161006141115-ba9a043346eb
 github.com/tidwall/grect
 # github.com/tidwall/match v1.0.1
 github.com/tidwall/match
+# github.com/tidwall/pretty v1.0.2
+github.com/tidwall/pretty
 # github.com/tidwall/rtree v0.0.0-20180113144539-6cd427091e0e
 github.com/tidwall/rtree
 github.com/tidwall/rtree/base
 # github.com/tidwall/tinyqueue v0.0.0-20180302190814-1e39f5511563
 github.com/tidwall/tinyqueue
-# golang.org/x/crypto v0.0.0-20180904163835-0709b304e793
-golang.org/x/crypto/ssh/terminal
-# golang.org/x/image v0.0.0-20190118043309-183bebdce1b2
+# golang.org/x/image v0.0.0-20200801110659-972c09e46d76
+## explicit
 golang.org/x/image/draw
 golang.org/x/image/font
 golang.org/x/image/font/basicfont
 golang.org/x/image/math/f64
 golang.org/x/image/math/fixed
-# golang.org/x/net v0.0.0-20190110200230-915654e7eabc
-golang.org/x/net/html/charset
+# golang.org/x/net v0.0.0-20200904194848-62affa334b73
+## explicit
 golang.org/x/net/html
 golang.org/x/net/html/atom
-# golang.org/x/sys v0.0.0-20180905080454-ebe1bf3edb33
+golang.org/x/net/html/charset
+# golang.org/x/sys v0.0.0-20200905004654-be1d3432aa8f
+## explicit
+golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/unix
-golang.org/x/sys/windows
-# golang.org/x/text v0.3.0
+# golang.org/x/text v0.3.3
+## explicit
 golang.org/x/text/encoding
 golang.org/x/text/encoding/charmap
 golang.org/x/text/encoding/htmlindex
-golang.org/x/text/transform
-golang.org/x/text/encoding/internal/identifier
 golang.org/x/text/encoding/internal
+golang.org/x/text/encoding/internal/identifier
 golang.org/x/text/encoding/japanese
 golang.org/x/text/encoding/korean
 golang.org/x/text/encoding/simplifiedchinese
 golang.org/x/text/encoding/traditionalchinese
 golang.org/x/text/encoding/unicode
-golang.org/x/text/language
-golang.org/x/text/internal/utf8internal
-golang.org/x/text/runes
+golang.org/x/text/internal/language
+golang.org/x/text/internal/language/compact
 golang.org/x/text/internal/tag
+golang.org/x/text/internal/utf8internal
+golang.org/x/text/language
+golang.org/x/text/runes
+golang.org/x/text/transform
 # gopkg.in/alecthomas/kingpin.v2 v2.2.6
+## explicit
 gopkg.in/alecthomas/kingpin.v2
-# periph.io/x/periph v3.4.0+incompatible
+# gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15
+## explicit
+# gopkg.in/yaml.v2 v2.2.5
+## explicit
+# periph.io/x/periph v3.6.4+incompatible
+## explicit
+periph.io/x/periph
+periph.io/x/periph/conn
 periph.io/x/periph/conn/gpio
 periph.io/x/periph/conn/gpio/gpioreg
-periph.io/x/periph/host
+periph.io/x/periph/conn/gpio/gpiostream
+periph.io/x/periph/conn/i2c
+periph.io/x/periph/conn/i2c/i2creg
 periph.io/x/periph/conn/physic
 periph.io/x/periph/conn/pin
-periph.io/x/periph
+periph.io/x/periph/conn/pin/pinreg
+periph.io/x/periph/conn/spi
+periph.io/x/periph/conn/spi/spireg
+periph.io/x/periph/host
 periph.io/x/periph/host/allwinner
 periph.io/x/periph/host/am335x
 periph.io/x/periph/host/bcm283x
+periph.io/x/periph/host/beagle/black
 periph.io/x/periph/host/beagle/bone
 periph.io/x/periph/host/beagle/green
 periph.io/x/periph/host/chip
-periph.io/x/periph/host/odroidc1
-periph.io/x/periph/host/pine64
-periph.io/x/periph/host/rpi
-periph.io/x/periph/host/sysfs
-periph.io/x/periph/conn
 periph.io/x/periph/host/cpu
 periph.io/x/periph/host/distro
-periph.io/x/periph/host/pmem
-periph.io/x/periph/conn/gpio/gpiostream
-periph.io/x/periph/host/videocore
-periph.io/x/periph/conn/pin/pinreg
-periph.io/x/periph/host/beagle/black
 periph.io/x/periph/host/fs
-periph.io/x/periph/conn/i2c
-periph.io/x/periph/conn/i2c/i2creg
-periph.io/x/periph/conn/spi
-periph.io/x/periph/conn/spi/spireg
+periph.io/x/periph/host/odroidc1
+periph.io/x/periph/host/pine64
+periph.io/x/periph/host/pmem
+periph.io/x/periph/host/rpi
+periph.io/x/periph/host/sysfs
+periph.io/x/periph/host/videocore

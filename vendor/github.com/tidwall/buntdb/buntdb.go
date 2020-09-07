@@ -121,6 +121,12 @@ type Config struct {
 	// OnExpired is used to custom handle the deletion option when a key
 	// has been expired.
 	OnExpired func(keys []string)
+
+	// OnExpiredSync will be called inside the same transaction that is performing
+	// the deletion of expired items. If OnExpired is present then this callback
+	// will not be called. If this callback is present, then the deletion of the
+	// timeed-out item is the explicit responsibility of this callback.
+	OnExpiredSync func(key, value string, tx *Tx) error
 }
 
 // exctx is a simple b-tree context for ordering by expiration.
@@ -328,8 +334,6 @@ func (idx *index) rebuild() {
 // less function to handle the content format and comparison.
 // There are some default less function that can be used such as
 // IndexString, IndexBinary, etc.
-//
-// Deprecated: Use Transactions
 func (db *DB) CreateIndex(name, pattern string,
 	less ...func(a, b string) bool) error {
 	return db.Update(func(tx *Tx) error {
@@ -341,8 +345,6 @@ func (db *DB) CreateIndex(name, pattern string,
 // The items are ordered in an b-tree and can be retrieved using the
 // Ascend* and Descend* methods.
 // If a previous index with the same name exists, that index will be deleted.
-//
-// Deprecated: Use Transactions
 func (db *DB) ReplaceIndex(name, pattern string,
 	less ...func(a, b string) bool) error {
 	return db.Update(func(tx *Tx) error {
@@ -375,8 +377,6 @@ func (db *DB) ReplaceIndex(name, pattern string,
 // Thus min[0] must be less-than-or-equal-to max[0].
 // The IndexRect is a default function that can be used for the rect
 // parameter.
-//
-// Deprecated: Use Transactions
 func (db *DB) CreateSpatialIndex(name, pattern string,
 	rect func(item string) (min, max []float64)) error {
 	return db.Update(func(tx *Tx) error {
@@ -388,8 +388,6 @@ func (db *DB) CreateSpatialIndex(name, pattern string,
 // The items are organized in an r-tree and can be retrieved using the
 // Intersects method.
 // If a previous index with the same name exists, that index will be deleted.
-//
-// Deprecated: Use Transactions
 func (db *DB) ReplaceSpatialIndex(name, pattern string,
 	rect func(item string) (min, max []float64)) error {
 	return db.Update(func(tx *Tx) error {
@@ -409,8 +407,6 @@ func (db *DB) ReplaceSpatialIndex(name, pattern string,
 }
 
 // DropIndex removes an index.
-//
-// Deprecated: Use Transactions
 func (db *DB) DropIndex(name string) error {
 	return db.Update(func(tx *Tx) error {
 		return tx.DropIndex(name)
@@ -418,8 +414,6 @@ func (db *DB) DropIndex(name string) error {
 }
 
 // Indexes returns a list of index names.
-//
-// Deprecated: Use Transactions
 func (db *DB) Indexes() ([]string, error) {
 	var names []string
 	var err = db.View(func(tx *Tx) error {
@@ -544,9 +538,13 @@ func (db *DB) backgroundManager() {
 		// Open a standard view. This will take a full lock of the
 		// database thus allowing for access to anything we need.
 		var onExpired func([]string)
-		var expired []string
+		var expired []*dbItem
+		var onExpiredSync func(key, value string, tx *Tx) error
 		err := db.Update(func(tx *Tx) error {
 			onExpired = db.config.OnExpired
+			if onExpired == nil {
+				onExpiredSync = db.config.OnExpiredSync
+			}
 			if db.persist && !db.config.AutoShrinkDisabled {
 				pos, err := db.file.Seek(0, 1)
 				if err != nil {
@@ -562,18 +560,24 @@ func (db *DB) backgroundManager() {
 			db.exps.AscendLessThan(&dbItem{
 				opts: &dbItemOpts{ex: true, exat: time.Now()},
 			}, func(item btree.Item) bool {
-				expired = append(expired, item.(*dbItem).key)
+				expired = append(expired, item.(*dbItem))
 				return true
 			})
-			if onExpired == nil {
-				for _, key := range expired {
-					if _, err := tx.Delete(key); err != nil {
+			if onExpired == nil && onExpiredSync == nil {
+				for _, itm := range expired {
+					if _, err := tx.Delete(itm.key); err != nil {
 						// it's ok to get a "not found" because the
 						// 'Delete' method reports "not found" for
 						// expired items.
 						if err != ErrNotFound {
 							return err
 						}
+					}
+				}
+			} else if onExpiredSync != nil {
+				for _, itm := range expired {
+					if err := onExpiredSync(itm.key, itm.val, tx); err != nil {
+						return err
 					}
 				}
 			}
@@ -585,7 +589,11 @@ func (db *DB) backgroundManager() {
 
 		// send expired event, if needed
 		if onExpired != nil && len(expired) > 0 {
-			onExpired(expired)
+			keys := make([]string, 0, 32)
+			for _, itm := range expired {
+				keys = append(keys, itm.key)
+			}
+			onExpired(keys)
 		}
 
 		// execute a disk sync, if needed
@@ -1399,13 +1407,18 @@ func (tx *Tx) Set(key, value string, opts *SetOptions) (previousValue string,
 }
 
 // Get returns a value for a key. If the item does not exist or if the item
-// has expired then ErrNotFound is returned.
-func (tx *Tx) Get(key string) (val string, err error) {
+// has expired then ErrNotFound is returned. If ignoreExpired is true, then
+// the found value will be returned even if it is expired.
+func (tx *Tx) Get(key string, ignoreExpired ...bool) (val string, err error) {
 	if tx.db == nil {
 		return "", ErrTxClosed
 	}
+	var ignore bool
+	if len(ignoreExpired) != 0 {
+		ignore = ignoreExpired[0]
+	}
 	item := tx.db.get(key)
-	if item == nil || item.expired() {
+	if item == nil || (item.expired() && !ignore) {
 		// The item does not exists or has expired. Let's assume that
 		// the caller is only interested in items that have not expired.
 		return "", ErrNotFound
@@ -1791,6 +1804,8 @@ func (r *rect) Rect(ctx interface{}) (min, max []float64) {
 // is represented by the rect string. This string will be processed by the
 // same bounds function that was passed to the CreateSpatialIndex() function.
 // An invalid index will return an error.
+// The dist param is the distance of the bounding boxes. In the case of
+// simple 2D points, it's the distance of the two 2D points squared.
 func (tx *Tx) Nearby(index, bounds string,
 	iterator func(key, value string, dist float64) bool) error {
 	if tx.db == nil {
