@@ -163,6 +163,7 @@ func startServer() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	tiger := ui.InitTiger()
 	buttons := ui.InitButtons()
 	led := ui.GetColorLED()
@@ -258,6 +259,8 @@ func handleCard(card *nfc.CardEvent, lastActive string, led ui.ColorLed, speaker
 					log.Debugf("Updated card %v with state %v", lastActive, p.State)
 				}
 			}
+		} else {
+			log.Warn("Could not fetch the player state to save it ", err)
 		}
 		speaker.Pause()
 		led.Off()
