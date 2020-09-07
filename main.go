@@ -26,7 +26,6 @@ var (
 	debug   = app.Flag("debug", "Turn on debug logging.").Bool()
 	start   = app.Command("start", "Start the music player and start listening for NFC cards.")
 	speaker = start.Flag("speaker", "The name of the speaker that the player should control.").Required().String()
-	refresh = start.Flag("refresh", "Refresh playlist content from deezer on startup.").Default("false").Bool()
 
 	check         = app.Command("check", "Check all album/playlist entries and show problems.")
 	add           = app.Command("add", "Construct and add a new playlist to a card.")
@@ -158,44 +157,9 @@ func checkEntries() {
 	}
 }
 
-func refreshPlaylists() {
-	log.Debug("Starting playlist refresh loop")
-	for {
-		log.Info("Refreshing playlist entries")
-		entries, err := db.ReadAll()
-		if err != nil {
-			log.Error("Encountered an error, will retry: ", err)
-			<-time.After(10 * time.Minute)
-			continue
-		}
-
-		for _, e := range *entries {
-			if e.PlaylistID != nil {
-				log.Debug("Refreshing playlist ", *e.PlaylistID)
-				p, err := deezer.GetPlaylist(fmt.Sprint(*e.PlaylistID))
-				if err != nil {
-					log.Error(err)
-					return
-				}
-
-				pl := sonos.FromPlaylist(p, e.ID)
-				pl.State = e.State
-
-				db.StoreCard(pl)
-			}
-
-			//don't spam the APIs
-			<-time.After(250 * time.Millisecond)
-		}
-		<-time.After(24 * time.Hour)
-	}
-}
-
 func startServer() {
 	s, err := sonos.New(*speaker)
-	if *refresh {
-		go refreshPlaylists()
-	}
+
 	if err != nil {
 		log.Fatal(err)
 	}
