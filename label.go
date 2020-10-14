@@ -3,31 +3,45 @@ package main
 import (
 	"fmt"
 	"github.com/callebjorkell/rpi-nfc-player/deezer"
+	"github.com/callebjorkell/rpi-nfc-player/sonos"
 	log "github.com/sirupsen/logrus"
 	"os"
 )
 
-func createSheet() {
-	cards, err := db.ReadAll()
+func createSheet(cardIds *[]string) {
+	var cards = new([]sonos.Playlist)
+	log.Debug("Cards: ", cardIds)
+	if cardIds != nil && len(*cardIds) > 0 {
+		for _, c := range *cardIds {
+			playlist, err := db.ReadCard(c)
+			if err != nil {
+				log.Warn(err)
+				continue
+			}
+
+			*cards = append(*cards, playlist)
+		}
+	} else {
+		all, _ := db.ReadAll()
+		cards = all
+	}
 	var lists []deezer.TrackList
-	if err == nil {
-		for _, card := range *cards {
-			if card.AlbumID != nil && *card.AlbumID > 0 {
-				a, err := getAlbum(*card.AlbumID)
-				if err != nil {
-					log.Warn(err)
-					continue
-				}
-				lists = append(lists, a)
+	for _, card := range *cards {
+		if card.AlbumID != nil && *card.AlbumID > 0 {
+			a, err := getAlbum(*card.AlbumID)
+			if err != nil {
+				log.Warn(err)
+				continue
 			}
-			if card.PlaylistID != nil && *card.PlaylistID > 0 {
-				p, err := getPlaylist(*card.PlaylistID)
-				if err != nil {
-					log.Warn(err)
-					continue
-				}
-				lists = append(lists, p)
+			lists = append(lists, a)
+		}
+		if card.PlaylistID != nil && *card.PlaylistID > 0 {
+			p, err := getPlaylist(*card.PlaylistID)
+			if err != nil {
+				log.Warn(err)
+				continue
 			}
+			lists = append(lists, p)
 		}
 	}
 
@@ -48,15 +62,17 @@ func createSheet() {
 
 func createLabel() {
 	if *sheet {
-		createSheet()
+		createSheet(labelCardId)
 		return
 	}
 
-	trackList, err := getLabelTrackList(labelAlbumId, labelPlaylistId, *labelCardId)
-	if err != nil {
-		log.Fatal(err)
+	for _, l := range *labelCardId {
+		trackList, err := getLabelTrackList(labelAlbumId, labelPlaylistId, l)
+		if err != nil {
+			log.Fatal(err)
+		}
+		generateLabel(trackList)
 	}
-	generateLabel(trackList)
 }
 
 func getLabelTrackList(givenAlbumId, givenPlaylistId *uint64, cardId string) (deezer.TrackList, error) {

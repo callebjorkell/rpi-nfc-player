@@ -21,6 +21,27 @@ var tigerArmed = false
 var playing = false
 var db = GetDB()
 
+type idList []string
+
+func (i *idList) Set(value string) error {
+	*i = append(*i, value)
+	return nil
+}
+
+func (*idList) IsCumulative() bool {
+	return true
+}
+
+func (*idList) String() string {
+	return ""
+}
+
+func IDList(s kingpin.Settings) (target *[]string) {
+	target = new([]string)
+	s.SetValue((*idList)(target))
+	return
+}
+
 var (
 	app     = kingpin.New("rpi-nfc-player", "Music player that plays Deezer albums on a Sonos speaker with the help of NFC cards, a Raspberry Pi and some buttons.")
 	debug   = app.Flag("debug", "Turn on debug logging.").Bool()
@@ -47,8 +68,8 @@ var (
 	label           = app.Command("label", "Create a label for a card.")
 	labelAlbumId    = label.Flag("albumId", "The id of the album that should be created. If not provided, a card will be requested.").Uint64()
 	labelPlaylistId = label.Flag("playlistId", "The id of the playlist that should be created. If not provided, a card will be requested.").Uint64()
-	labelCardId     = label.Flag("cardId", "Manually specify the card that the label should be printed for.").String()
-	sheet           = label.Flag("sheet", "Render all labels in the database onto A4 sized sheets for batch printing. Using this ignores the cardId and id flags if set.").Bool()
+	labelCardId     = IDList(label.Flag("cardId", "Manually specify the card(s) that the label should be printed for. Can specify multiple."))
+	sheet           = label.Flag("sheet", "Render all labels in the database onto A4 sized sheets for batch printing. Using this ignores the id flags if set.").Bool()
 )
 
 func main() {

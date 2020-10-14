@@ -13,20 +13,29 @@ func dumpAll() {
 	}
 
 	if len(*c) > 0 {
-		fmt.Println("            ID │   AlbumId   │   PlaylistId    │ Tracks ")
-		fmt.Println("───────────────┼─────────────┼─────────────────┼────────")
+		fmt.Println("            ID │   AlbumId   │   PlaylistId    │ Tracks │ Title")
+		fmt.Println("───────────────┼─────────────┼─────────────────┼────────┼────────────────────")
 	} else {
 		fmt.Println("No cards found in the database...")
 	}
 	for _, card := range *c {
 		var album, playlist string
+		title := ""
 		if card.AlbumID != nil {
 			album = fmt.Sprintf("%v", *card.AlbumID)
+			a, err := deezer.GetAlbum(fmt.Sprintf("%v", *card.AlbumID))
+			if err == nil {
+				title = fmt.Sprintf("%v - %v", a.Artist(), a.Title())
+			}
 		}
 		if card.PlaylistID != nil {
 			playlist = fmt.Sprintf("%v", *card.PlaylistID)
+			p, err := deezer.GetPlaylist(fmt.Sprintf("%v", *card.PlaylistID))
+			if err == nil {
+				title = p.Title()
+			}
 		}
-		fmt.Printf("%14v │ %11v │ %15v │ %4v \n", card.ID, album, playlist, len(card.Tracks))
+		fmt.Printf("%14v │ %11v │ %15v │ %6v │ %20v\n", card.ID, album, playlist, len(card.Tracks), title)
 	}
 }
 
