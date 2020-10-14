@@ -14,7 +14,7 @@ func dumpAll() {
 
 	if len(*c) > 0 {
 		fmt.Println("            ID │   AlbumId   │   PlaylistId    │ Tracks │ Title")
-		fmt.Println("───────────────┼─────────────┼─────────────────┼────────┼────────────────────")
+		fmt.Println("───────────────┼─────────────┼─────────────────┼────────┼─────────────────────────────────────────")
 	} else {
 		fmt.Println("No cards found in the database...")
 	}
@@ -35,7 +35,10 @@ func dumpAll() {
 				title = p.Title()
 			}
 		}
-		fmt.Printf("%14v │ %11v │ %15v │ %6v │ %20v\n", card.ID, album, playlist, len(card.Tracks), title)
+		if len(title) > 40 {
+			title = fmt.Sprintf("%.39v…", title)
+		}
+		fmt.Printf("%14v │ %11v │ %15v │ %6v │ %v\n", card.ID, album, playlist, len(card.Tracks), title)
 	}
 }
 
