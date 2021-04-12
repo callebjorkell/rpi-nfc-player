@@ -70,6 +70,8 @@ var (
 	labelPlaylistId = label.Flag("playlistId", "The id of the playlist that should be created. If not provided, a card will be requested.").Uint64()
 	labelCardId     = IDList(label.Flag("cardId", "Manually specify the card(s) that the label should be printed for. Can specify multiple."))
 	sheet           = label.Flag("sheet", "Render all labels in the database onto A4 sized sheets for batch printing. Using this ignores the id flags if set.").Bool()
+
+	version         = app.Command("version", "Show current version.")
 )
 
 func main() {
@@ -122,8 +124,20 @@ func main() {
 		createLabel()
 	case check.FullCommand():
 		checkEntries()
+	case version.FullCommand():
+		showVersion()
 	default:
 		kingpin.FatalUsage("Unrecognized command")
+	}
+}
+
+var buildTime, buildVersion string
+
+func showVersion() {
+	if buildTime != "" && buildVersion != "" {
+		fmt.Printf("%s (built: %s)\n", buildVersion, buildTime)
+	} else {
+		fmt.Println("nfc-player: dev")
 	}
 }
 
