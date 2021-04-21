@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/callebjorkell/rpi-nfc-player/deezer"
 	"github.com/callebjorkell/rpi-nfc-player/nfc"
-	"github.com/callebjorkell/rpi-nfc-player/sonos"
+	sonos "github.com/callebjorkell/rpi-nfc-player/sonos"
 	"github.com/callebjorkell/rpi-nfc-player/ui"
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/alecthomas/kingpin.v2"
@@ -49,6 +49,7 @@ var (
 	speaker = start.Flag("speaker", "The name of the speaker that the player should control.").Required().String()
 
 	check         = app.Command("check", "Check all album/playlist entries and show problems.")
+	checkRefresh  = check.Flag("refresh", "Re-write the information into the database. Useful if the data format has changed.").Bool()
 	add           = app.Command("add", "Construct and add a new playlist to a card.")
 	addAlbumId    = add.Flag("albumId", "The ID of the album that should be added.").Uint64()
 	addPlaylistId = add.Flag("playlistId", "The ID of the playlist that should be added.").Uint64()
@@ -59,7 +60,7 @@ var (
 
 	dump       = app.Command("dump", "Read a card and dump all the available information onto standard out.")
 	dumpCardId = dump.Flag("cardId", "Manually specify the card id to be used.").String()
-	dumpInfo   = dump.Flag("albumInfo", "Dump information about the album the card points to instead of the data on the card.").Bool()
+	dumpInfo   = dump.Flag("info", "Dump information about the album/playlist the card points to instead of the data on the card.").Bool()
 	dumpList   = dump.Flag("list", "Dump a short list of all the cards in the database").Bool()
 
 	search       = app.Command("search", "Search for albums on deezer")
@@ -176,18 +177,32 @@ func checkEntries() {
 
 	for _, e := range *entries {
 		if e.AlbumID != nil {
-			_, err := deezer.GetAlbum(fmt.Sprint(*e.AlbumID))
+			a, err := deezer.GetAlbum(e.AlbumIDString())
 			if err != nil {
-				fmt.Printf("FAIL %15s (album %v): %v\n", e.ID, *e.AlbumID, err)
+				fmt.Printf("FAIL %15s (album %v - %v): %v\n", e.ID, e.AlbumIDString(), e.Title, err)
 			} else {
-				fmt.Printf("OK   %15s (album %v)\n", e.ID, *e.AlbumID)
+				fmt.Printf("OK   %15s (album %v - %v)\n", e.ID, e.AlbumIDString(), e.Title)
+			}
+			if *checkRefresh {
+				c := sonos.FromAlbum(a, e.ID)
+				err := db.StoreCard(c)
+				if err != nil {
+					panic(err)
+				}
 			}
 		} else if e.PlaylistID != nil {
-			_, err := deezer.GetPlaylist(fmt.Sprint(*e.PlaylistID))
+			p, err := deezer.GetPlaylist(e.PlaylistIDString())
 			if err != nil {
-				fmt.Printf("FAIL %15s (playlist %v): %v\n", e.ID, *e.PlaylistID, err)
+				fmt.Printf("FAIL %15s (playlist %v - %v): %v\n", e.ID, e.PlaylistIDString(), e.Title, err)
 			} else {
-				fmt.Printf("OK   %15s (playlist %v)\n", e.ID, *e.PlaylistID)
+				fmt.Printf("OK   %15s (playlist %v - %v)\n", e.ID, e.PlaylistIDString(), e.Title)
+			}
+			if *checkRefresh {
+				c := sonos.FromPlaylist(p, e.ID)
+				err := db.StoreCard(c)
+				if err != nil {
+					panic(err)
+				}
 			}
 		} else {
 			fmt.Printf("FAIL %15s: Has no album/playlist ID.\n", e.ID)

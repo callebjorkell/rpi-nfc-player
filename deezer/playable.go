@@ -12,6 +12,7 @@ type Playable interface {
 	Id() string
 	Artist() string
 	Title() string
+	FullTitle() string
 }
 
 func fetchCoverArt(uri string) *image.Image {

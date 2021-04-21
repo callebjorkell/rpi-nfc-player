@@ -23,12 +23,22 @@ func (a Album) Title() string {
 	return a.TitleString
 }
 
+func (a Album) FullTitle() string {
+	if a.Artist() == "" {
+		return a.Title()
+	}
+	if a.Title() == "" {
+		return a.Artist()
+	}
+	return fmt.Sprintf("%v - %v", a.Artist(), a.Title())
+}
+
 func (a Album) Artist() string {
 	return a.ArtistContainer.Name
 }
 
 func (a Album) String() string {
-	return fmt.Sprintf("ID: %v, artist: %v, title: %v", a.Identifier, a.Artist(), a.Title())
+	return fmt.Sprintf("Type: album, ID: %v, artist: %v, title: %v", a.Id(), a.Artist(), a.Title())
 }
 
 func (a Album) CoverArt() *image.Image {

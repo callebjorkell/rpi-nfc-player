@@ -27,22 +27,12 @@ func createSheet(cardIds *[]string) {
 	}
 	var lists []deezer.Playable
 	for _, card := range *cards {
-		if card.AlbumID != nil && *card.AlbumID > 0 {
-			a, err := getAlbum(*card.AlbumID)
-			if err != nil {
-				log.Warn(err)
-				continue
-			}
-			lists = append(lists, a)
+		p, err := card.ToPlayable()
+		if err != nil {
+			log.Warn(err)
+			continue
 		}
-		if card.PlaylistID != nil && *card.PlaylistID > 0 {
-			p, err := getPlaylist(*card.PlaylistID)
-			if err != nil {
-				log.Warn(err)
-				continue
-			}
-			lists = append(lists, p)
-		}
+		lists = append(lists, p)
 	}
 
 	step := deezer.LabelsPerSheet
@@ -66,49 +56,45 @@ func createLabel() {
 		return
 	}
 
-	for _, l := range *labelCardId {
-		trackList, err := getPlayable(labelAlbumId, labelPlaylistId, l)
+	if labelAlbumId != nil && *labelAlbumId > 0 {
+		p, err := deezer.GetAlbum(fmt.Sprintf("%v", labelAlbumId))
 		if err != nil {
 			log.Fatal(err)
 		}
-		generateLabel(trackList)
-	}
-}
-
-func getPlayable(givenAlbumId, givenPlaylistId *uint64, cardId string) (deezer.Playable, error) {
-	if givenAlbumId != nil && *givenAlbumId > 0 {
-		return getAlbum(*givenAlbumId)
-	}
-	if givenPlaylistId != nil && *givenPlaylistId > 0 {
-		return getPlaylist(*givenPlaylistId)
-	}
-
-	if cardId == "" {
+		generateLabel(p)
+	} else if labelPlaylistId != nil && *labelPlaylistId > 0 {
+		p, err := deezer.GetPlaylist(fmt.Sprintf("%v", labelPlaylistId))
+		if err != nil {
+			log.Fatal(err)
+		}
+		generateLabel(p)
+	} else if len(*labelCardId) > 0 {
+		for _, l := range *labelCardId {
+			p, err := getPlayable(l)
+			if err != nil {
+				log.Fatal(err)
+			}
+			generateLabel(p)
+		}
+	} else {
 		if read, err := readSingleCard(); err != nil {
 			log.Fatal(err)
 		} else {
-			cardId = read
+			p, err := getPlayable(read)
+			if err != nil {
+				log.Fatal(err)
+			}
+			generateLabel(p)
 		}
 	}
+}
 
+func getPlayable(cardId string) (deezer.Playable, error) {
 	card, err := db.ReadCard(cardId)
-	if err == nil {
-		if card.AlbumID != nil && *card.AlbumID > 0 {
-			return getAlbum(*card.AlbumID)
-		}
-		if card.PlaylistID != nil && *card.PlaylistID > 0 {
-			return getPlaylist(*card.PlaylistID)
-		}
+	if err != nil {
+		return nil, fmt.Errorf("couldn't get a card with id %v", cardId)
 	}
-	return nil, fmt.Errorf("couldn't get a card with id %v", cardId)
-}
-
-func getPlaylist(id uint64) (deezer.Playable, error) {
-	return deezer.GetPlaylist(fmt.Sprintf("%v", id))
-}
-
-func getAlbum(id uint64) (deezer.Playable, error) {
-	return deezer.GetAlbum(fmt.Sprintf("%v", id))
+	return card.ToPlayable()
 }
 
 func generateLabel(t deezer.Playable) {

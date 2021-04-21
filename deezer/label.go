@@ -131,7 +131,7 @@ func drawCutMark(l *gg.Context, x, y int) {
 }
 
 func renderLabelContext(t Playable) (*gg.Context, error) {
-	logrus.Debugf("Generating label for %v (%v - %v)", t.Id(), t.Artist(), t.Title())
+	logrus.Debugf("Generating label for %v (%v)", t.Id(), t.FullTitle())
 	img := t.CoverArt()
 
 	width := scaleI(labelWidth)

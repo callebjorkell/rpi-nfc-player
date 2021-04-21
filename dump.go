@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"github.com/callebjorkell/rpi-nfc-player/deezer"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -19,22 +18,9 @@ func dumpAll() {
 		fmt.Println("No cards found in the database...")
 	}
 	for _, card := range *c {
-		var album, playlist string
-		title := ""
-		if card.AlbumID != nil {
-			album = fmt.Sprintf("%v", *card.AlbumID)
-			a, err := deezer.GetAlbum(fmt.Sprintf("%v", *card.AlbumID))
-			if err == nil {
-				title = fmt.Sprintf("%v - %v", a.Artist(), a.Title())
-			}
-		}
-		if card.PlaylistID != nil {
-			playlist = fmt.Sprintf("%v", *card.PlaylistID)
-			p, err := deezer.GetPlaylist(fmt.Sprintf("%v", *card.PlaylistID))
-			if err == nil {
-				title = p.Title()
-			}
-		}
+		title := card.Title
+		album := card.AlbumIDString()
+		playlist := card.PlaylistIDString()
 		if len(title) > 40 {
 			title = fmt.Sprintf("%.39v…", title)
 		}
@@ -58,7 +44,7 @@ func dumpCard(cardId string) {
 	}
 
 	if *dumpInfo {
-		a, err := deezer.GetAlbum(fmt.Sprintf("%v", *p.AlbumID))
+		a, err := p.ToPlayable()
 		if err != nil {
 			log.Error(err)
 			return

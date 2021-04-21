@@ -16,8 +16,12 @@ type Playlist struct {
 	TitleString string `json:"title"`
 }
 
+func (p Playlist) FullTitle() string {
+	return p.Title()
+}
+
 func (p Playlist) String() string {
-	return fmt.Sprintf("ID: %v, title: %v", p.Id, p.Title)
+	return fmt.Sprintf("Type: playlist, ID: %v, title: %v", p.Id(), p.Title())
 }
 
 func (p Playlist) CoverArt() *image.Image {

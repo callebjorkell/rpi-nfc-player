@@ -2,6 +2,7 @@ package sonos
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/callebjorkell/rpi-nfc-player/deezer"
 )
@@ -18,6 +19,22 @@ type CardInfo struct {
 	PlaylistID *uint64 `json:"playlistId,omitempty"`
 	// State is the last seen state of the card. If none exists, the state will be nil.
 	State *CardStatus `json:"state,omitempty"`
+	// Title is the human readable title of the album/playlist on the card. Helps in debugging.
+	Title string `json:"title,omitempty"`
+}
+
+func (p CardInfo) AlbumIDString() string {
+	if p.AlbumID != nil {
+		return fmt.Sprintf("%v", *p.AlbumID)
+	}
+	return ""
+}
+
+func (p CardInfo) PlaylistIDString() string {
+	if p.PlaylistID != nil {
+		return fmt.Sprintf("%v", *p.PlaylistID)
+	}
+	return ""
 }
 
 func (p CardInfo) String() string {
@@ -42,7 +59,18 @@ func FromAlbum(album *deezer.Album, cardId string) *CardInfo {
 		AlbumID:    &albumId,
 		State:      nil,
 		PlaylistID: nil,
+		Title:      album.FullTitle(),
 	}
+}
+
+func (p CardInfo) ToPlayable() (deezer.Playable, error) {
+	if p.AlbumID != nil {
+		return deezer.GetAlbum(p.AlbumIDString())
+	}
+	if p.PlaylistID != nil {
+		return deezer.GetPlaylist(p.PlaylistIDString())
+	}
+	return nil, errors.New("")
 }
 
 func FromPlaylist(p *deezer.Playlist, cardId string) *CardInfo {
@@ -52,5 +80,6 @@ func FromPlaylist(p *deezer.Playlist, cardId string) *CardInfo {
 		PlaylistID: &playlistId,
 		State:      nil,
 		AlbumID:    nil,
+		Title:      p.FullTitle(),
 	}
 }
