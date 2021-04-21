@@ -9,7 +9,7 @@ import (
 )
 
 func createSheet(cardIds *[]string) {
-	var cards = new([]sonos.Playlist)
+	var cards = new([]sonos.CardInfo)
 	log.Debug("Cards: ", cardIds)
 	if cardIds != nil && len(*cardIds) > 0 {
 		for _, c := range *cardIds {
@@ -25,7 +25,7 @@ func createSheet(cardIds *[]string) {
 		all, _ := db.ReadAll()
 		cards = all
 	}
-	var lists []deezer.TrackList
+	var lists []deezer.Playable
 	for _, card := range *cards {
 		if card.AlbumID != nil && *card.AlbumID > 0 {
 			a, err := getAlbum(*card.AlbumID)
@@ -67,7 +67,7 @@ func createLabel() {
 	}
 
 	for _, l := range *labelCardId {
-		trackList, err := getLabelTrackList(labelAlbumId, labelPlaylistId, l)
+		trackList, err := getPlayable(labelAlbumId, labelPlaylistId, l)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -75,7 +75,7 @@ func createLabel() {
 	}
 }
 
-func getLabelTrackList(givenAlbumId, givenPlaylistId *uint64, cardId string) (deezer.TrackList, error) {
+func getPlayable(givenAlbumId, givenPlaylistId *uint64, cardId string) (deezer.Playable, error) {
 	if givenAlbumId != nil && *givenAlbumId > 0 {
 		return getAlbum(*givenAlbumId)
 	}
@@ -103,15 +103,15 @@ func getLabelTrackList(givenAlbumId, givenPlaylistId *uint64, cardId string) (de
 	return nil, fmt.Errorf("couldn't get a card with id %v", cardId)
 }
 
-func getPlaylist(id uint64) (deezer.TrackList, error) {
+func getPlaylist(id uint64) (deezer.Playable, error) {
 	return deezer.GetPlaylist(fmt.Sprintf("%v", id))
 }
 
-func getAlbum(id uint64) (deezer.TrackList, error) {
+func getAlbum(id uint64) (deezer.Playable, error) {
 	return deezer.GetAlbum(fmt.Sprintf("%v", id))
 }
 
-func generateLabel(t deezer.TrackList) {
+func generateLabel(t deezer.Playable) {
 	file := fmt.Sprintf("%v.png", t.Id())
 	log.Infof("Generating label for %v into %v", t.Id(), file)
 

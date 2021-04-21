@@ -288,7 +288,7 @@ func handleCard(card *nfc.CardEvent, lastActive string, led ui.ColorLed, speaker
 					i = 1
 				}
 
-				p.State = &sonos.PlaylistState{
+				p.State = &sonos.CardStatus{
 					CurrentTrack:    i,
 					CurrentPosition: state.RelTime,
 				}

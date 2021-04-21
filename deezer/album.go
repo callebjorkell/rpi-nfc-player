@@ -16,20 +16,7 @@ type Album struct {
 	ArtistContainer struct {
 		Name string `json:"name"`
 	} `json:"artist"`
-	TrackList struct {
-		Data []struct {
-			Id uint64 `json:"id"`
-		} `json:"data"`
-	} `json:"tracks"`
 	TitleString string `json:"title"`
-}
-
-func (a Album) Tracks() []string {
-	var tracks []string
-	for _, value := range a.TrackList.Data {
-		tracks = append(tracks, fmt.Sprint(value.Id))
-	}
-	return tracks
 }
 
 func (a Album) Title() string {
@@ -41,11 +28,7 @@ func (a Album) Artist() string {
 }
 
 func (a Album) String() string {
-	return fmt.Sprintf("ID: %v, artist: %v, title: %v, tracks: %v", a.Identifier, a.Artist(), a.Title(), len(a.TrackList.Data))
-}
-
-func GetAlbum(albumId string) (*Album, error) {
-	return getAlbumInfo(albumId)
+	return fmt.Sprintf("ID: %v, artist: %v, title: %v", a.Identifier, a.Artist(), a.Title())
 }
 
 func (a Album) CoverArt() *image.Image {
@@ -56,7 +39,7 @@ func (a Album) Id() string {
 	return fmt.Sprintf("a-%v", a.Identifier)
 }
 
-func getAlbumInfo(albumId string) (*Album, error) {
+func GetAlbum(albumId string) (*Album, error) {
 	u := fmt.Sprintf("%s/%s", albumUriBase, albumId)
 	res, err := http.DefaultClient.Get(u)
 	if err != nil {

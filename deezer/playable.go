@@ -6,9 +6,8 @@ import (
 	"net/http"
 )
 
-type TrackList interface {
+type Playable interface {
 	String() string
-	Tracks() []string
 	CoverArt() *image.Image
 	Id() string
 	Artist() string

@@ -34,7 +34,7 @@ func (db *DB) Close() error {
 	return db.instance.Close()
 }
 
-func (db *DB) StoreCard(c *sonos.Playlist) error {
+func (db *DB) StoreCard(c *sonos.CardInfo) error {
 	return db.instance.Update(func(tx *buntdb.Tx) error {
 		data, err := json.Marshal(c)
 		if err != nil {
@@ -47,12 +47,12 @@ func (db *DB) StoreCard(c *sonos.Playlist) error {
 	})
 }
 
-func (db *DB) ReadAll() (*[]sonos.Playlist, error) {
-	var cards []sonos.Playlist
+func (db *DB) ReadAll() (*[]sonos.CardInfo, error) {
+	var cards []sonos.CardInfo
 	err := db.instance.View(func(tx *buntdb.Tx) error {
 		var shitHappened error
 		err := tx.Ascend("", func(key, value string) bool {
-			var c sonos.Playlist
+			var c sonos.CardInfo
 			shitHappened = json.Unmarshal([]byte(value), &c)
 			if shitHappened != nil {
 				return false
@@ -69,8 +69,8 @@ func (db *DB) ReadAll() (*[]sonos.Playlist, error) {
 	return &cards, err
 }
 
-func (db *DB) ReadCard(id string) (sonos.Playlist, error) {
-	var c sonos.Playlist
+func (db *DB) ReadCard(id string) (sonos.CardInfo, error) {
+	var c sonos.CardInfo
 	err := db.instance.View(func(tx *buntdb.Tx) error {
 		s, err := tx.Get(getCardKey(id))
 		if err != nil {

@@ -32,12 +32,12 @@ type didlPayload struct {
 	Container *didlItem `xml:"container"`
 }
 
-
 const (
  	trackClass = "object.item.audioItem.musicTrack"
  	albumClass = "object.container.album"
  	playlistClass = "object.container.playlistContainer"
 )
+
 func CreateTrackMetadata(deezerId string) ([]byte, error) {
 	return createDidl(fmt.Sprintf("00032020%v", deezerId), trackClass)
 }

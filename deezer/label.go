@@ -27,8 +27,6 @@ var colors = []string{
 	"#FDEE00",
 }
 
-
-
 // image size of 50x81.6mm (85.60 mm × 53.98 with 2mm margin on each side) at 600/2 DPI
 // = 1181 x 1928 pix
 const (
@@ -64,7 +62,7 @@ func scaleF(size float64) float64 {
 	return math.RoundToEven(renderScale * size)
 }
 
-func CreateLabelSheet(trackLists []TrackList, out io.Writer) error {
+func CreateLabelSheet(trackLists []Playable, out io.Writer) error {
 	if len(trackLists) > LabelsPerSheet {
 		return fmt.Errorf("too many albums for a single sheet. Max: %v, got: %v", LabelsPerSheet, len(trackLists))
 	}
@@ -83,12 +81,12 @@ func CreateLabelSheet(trackLists []TrackList, out io.Writer) error {
 	l.SetRGB(0, 0, 0)
 	l.SetLineWidth(scaleF(lineWidth))
 
-	for index, trackList := range trackLists {
+	for index, p := range trackLists {
 		wg.Add(1)
-		go func(index int, trackList TrackList) {
+		go func(index int, p Playable) {
 			defer wg.Done()
-			c, _ := renderLabelContext(trackList)
-			logrus.Debugf("Rendering label for %v at index %v", trackList.Id(), index)
+			c, _ := renderLabelContext(p)
+			logrus.Debugf("Rendering label for %v at index %v", p.Id(), index)
 			x := baseX + (index % horizontalLabels * width)
 			y := baseY + (index / verticalLabels * height)
 
@@ -100,7 +98,7 @@ func CreateLabelSheet(trackLists []TrackList, out io.Writer) error {
 			drawCutMark(l, x+width, y+height)
 			l.Stroke()
 			drawing.Unlock()
-		}(index, trackList)
+		}(index, p)
 	}
 	wg.Wait()
 
@@ -111,7 +109,7 @@ func CreateLabelSheet(trackLists []TrackList, out io.Writer) error {
 	return nil
 }
 
-func CreateLabel(t TrackList, out io.Writer) error {
+func CreateLabel(t Playable, out io.Writer) error {
 	l, err := renderLabelContext(t)
 	if err != nil {
 		return err
@@ -132,7 +130,7 @@ func drawCutMark(l *gg.Context, x, y int) {
 	l.DrawLine(fx, fy-length, fx, fy+length)
 }
 
-func renderLabelContext(t TrackList) (*gg.Context, error) {
+func renderLabelContext(t Playable) (*gg.Context, error) {
 	logrus.Debugf("Generating label for %v (%v - %v)", t.Id(), t.Artist(), t.Title())
 	img := t.CoverArt()
 

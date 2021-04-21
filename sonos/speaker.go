@@ -6,7 +6,6 @@ import (
 	"github.com/huin/goupnp/soap"
 	"github.com/sirupsen/logrus"
 	"strconv"
-	"strings"
 )
 
 /*
@@ -96,15 +95,13 @@ func (s *SonosSpeaker) setAVTransportToQueue() {
 // * Playlist
 // * Tracks
 // and use the first one that has been set. Repeat will also be set.
-func (s *SonosSpeaker) SetPlaylist(playlist Playlist) {
+func (s *SonosSpeaker) SetPlaylist(playlist CardInfo) {
 	s.Clear()
 
 	if playlist.AlbumID != nil {
 		s.playAlbum(*playlist.AlbumID)
 	} else if playlist.PlaylistID != nil {
 		s.playPlaylist(*playlist.PlaylistID)
-	} else if len(playlist.Tracks) > 0 {
-		s.playTracks(playlist.Tracks)
 	} else {
 		logrus.Errorf("No content for playlist %v. Try to re-provision it?", playlist.ID)
 	}
@@ -152,78 +149,6 @@ func (s *SonosSpeaker) enqueue(uri string, m []byte) {
 		"0", uri, string(m), "0", "0",
 	}
 	s.control.Action("AddURIToQueue", in, nil)
-}
-
-func (s *SonosSpeaker) playTracks(tracks []Track) {
-	logrus.Debugf("Queueing %v tracks", len(tracks))
-	// chunk the queue in 16 item chunks to allow them to be added to sonos without errors.
-	pLen := len(tracks)
-	const cSize = 16
-
-	for i := 0; i < pLen; i += cSize {
-		l := i + cSize
-		if l > pLen {
-			l = pLen
-		}
-		s.addChunk(tracks[i:l])
-	}
-}
-
-// addChunk adds a chunk of tracks to the sonos speaker. Note that if this goes over 16 in size, there are probably going to be problems.
-func (s *SonosSpeaker) addChunk(tracks []Track) {
-	if len(tracks) == 0 {
-		return
-	}
-
-	uri := strings.Builder{}
-	metadata := strings.Builder{}
-	for i, track := range tracks {
-		if track.Location != Deezer {
-			panic("Only deezer is supported now")
-		}
-		m, err := CreateTrackMetadata(track.ID)
-		if err != nil {
-			panic(err)
-		}
-
-		u := fmt.Sprintf("x-sonos-http:tr:%v.mp3", track.ID)
-
-		if i != 0 {
-			//metadata.WriteString(" ")
-			uri.WriteString(" ")
-		}
-
-		metadata.Write(m)
-		uri.WriteString(u)
-	}
-
-	in := struct {
-		UpdateID                        string
-		NumberOfURIs                    string
-		EnqueuedURIs                    string
-		EnqueuedURIsMetaData            string
-		DesiredFirstTrackNumberEnqueued string
-		EnqueueAsNext                   string
-		InstanceID                      string
-	}{
-		"0", strconv.Itoa(len(tracks)), uri.String(), metadata.String(), "0", "0", "0",
-	}
-	if err := s.control.Action("AddMultipleURIsToQueue", in, nil); err != nil {
-		logrus.Warn("Could not queue the playlist: ", err)
-	}
-}
-
-func (s *SonosSpeaker) AddTrack(t Track) {
-	if t.Location != Deezer {
-		panic("Only deezer is supported now")
-	}
-	m, err := CreateTrackMetadata(t.ID)
-	if err != nil {
-		logrus.Warn("Unable to generate DIDL: ", err)
-		return
-	}
-	uri := fmt.Sprintf("x-sonos-http:tr:%v.mp3", t.ID)
-	s.enqueue(uri, m)
 }
 
 func (s *SonosSpeaker) Seek(position int) {
