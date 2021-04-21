@@ -1,7 +1,7 @@
 // Package buntdb implements a low-level in-memory key/value store in pure Go.
 // It persists to disk, is ACID compliant, and uses locking for multiple
-// readers and a single writer. Bunt is ideal for projects that need
-// a dependable database, and favor speed over data size.
+// readers and a single writer. Bunt is ideal for projects that need a
+// dependable database, and favor speed over data size.
 package buntdb
 
 import (
@@ -19,7 +19,7 @@ import (
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/grect"
 	"github.com/tidwall/match"
-	"github.com/tidwall/rtree"
+	"github.com/tidwall/rtred"
 )
 
 var (
@@ -69,7 +69,6 @@ type DB struct {
 	keys      *btree.BTree      // a tree of all item ordered by key
 	exps      *btree.BTree      // a tree of items ordered by expiration
 	idxs      map[string]*index // the index trees.
-	exmgr     bool              // indicates that expires manager is running.
 	flushes   int               // a count of the number of disk flushes
 	closed    bool              // set when the database has been closed
 	config    Config            // the database configuration
@@ -122,10 +121,11 @@ type Config struct {
 	// has been expired.
 	OnExpired func(keys []string)
 
-	// OnExpiredSync will be called inside the same transaction that is performing
-	// the deletion of expired items. If OnExpired is present then this callback
-	// will not be called. If this callback is present, then the deletion of the
-	// timeed-out item is the explicit responsibility of this callback.
+	// OnExpiredSync will be called inside the same transaction that is
+	// performing the deletion of expired items. If OnExpired is present then
+	// this callback will not be called. If this callback is present, then the
+	// deletion of the timeed-out item is the explicit responsibility of this
+	// callback.
 	OnExpiredSync func(key, value string, tx *Tx) error
 }
 
@@ -134,16 +134,13 @@ type exctx struct {
 	db *DB
 }
 
-// Default number of btree degrees
-const btreeDegrees = 64
-
 // Open opens a database at the provided path.
 // If the file does not exist then it will be created automatically.
 func Open(path string) (*DB, error) {
 	db := &DB{}
 	// initialize trees and indexes
-	db.keys = btree.New(btreeDegrees, nil)
-	db.exps = btree.New(btreeDegrees, &exctx{db})
+	db.keys = btree.New(lessCtx(nil))
+	db.exps = btree.New(lessCtx(&exctx{db}))
 	db.idxs = make(map[string]*index)
 	// initialize default configuration
 	db.config = Config{
@@ -204,7 +201,7 @@ func (db *DB) Save(wr io.Writer) error {
 	// use a buffered writer and flush every 4MB
 	var buf []byte
 	// iterated through every item in the database and write to the buffer
-	db.keys.Ascend(func(item btree.Item) bool {
+	btreeAscend(db.keys, func(item interface{}) bool {
 		dbi := item.(*dbItem)
 		buf = dbi.writeSetTo(buf)
 		if len(buf) > 1024*1024*4 {
@@ -240,14 +237,15 @@ func (db *DB) Load(rd io.Reader) error {
 		// cannot load into databases that persist to disk
 		return ErrPersistenceActive
 	}
-	return db.readLoad(rd, time.Now())
+	_, err := db.readLoad(rd, time.Now())
+	return err
 }
 
 // index represents a b-tree or r-tree index and also acts as the
 // b-tree/r-tree context for itself.
 type index struct {
 	btr     *btree.BTree                           // contains the items
-	rtr     *rtree.RTree                           // contains the items
+	rtr     *rtred.RTree                           // contains the items
 	name    string                                 // name of the index
 	pattern string                                 // a required key pattern
 	less    func(a, b string) bool                 // less comparison function
@@ -285,10 +283,10 @@ func (idx *index) clearCopy() *index {
 	}
 	// initialize with empty trees
 	if nidx.less != nil {
-		nidx.btr = btree.New(btreeDegrees, nidx)
+		nidx.btr = btree.New(lessCtx(nidx))
 	}
 	if nidx.rect != nil {
-		nidx.rtr = rtree.New(nidx)
+		nidx.rtr = rtred.New(nidx)
 	}
 	return nidx
 }
@@ -297,20 +295,20 @@ func (idx *index) clearCopy() *index {
 func (idx *index) rebuild() {
 	// initialize trees
 	if idx.less != nil {
-		idx.btr = btree.New(btreeDegrees, idx)
+		idx.btr = btree.New(lessCtx(idx))
 	}
 	if idx.rect != nil {
-		idx.rtr = rtree.New(idx)
+		idx.rtr = rtred.New(idx)
 	}
 	// iterate through all keys and fill the index
-	idx.db.keys.Ascend(func(item btree.Item) bool {
+	btreeAscend(idx.db.keys, func(item interface{}) bool {
 		dbi := item.(*dbItem)
 		if !idx.match(dbi.key) {
-			// does not match the pattern, conintue
+			// does not match the pattern, continue
 			return true
 		}
 		if idx.less != nil {
-			idx.btr.ReplaceOrInsert(dbi)
+			idx.btr.Set(dbi)
 		}
 		if idx.rect != nil {
 			idx.rtr.Insert(dbi)
@@ -456,7 +454,7 @@ func (db *DB) SetConfig(config Config) error {
 // will be replaced with the new one, and return the previous item.
 func (db *DB) insertIntoDatabase(item *dbItem) *dbItem {
 	var pdbi *dbItem
-	prev := db.keys.ReplaceOrInsert(item)
+	prev := db.keys.Set(item)
 	if prev != nil {
 		// A previous item was removed from the keys tree. Let's
 		// fully delete this item from all indexes.
@@ -479,7 +477,7 @@ func (db *DB) insertIntoDatabase(item *dbItem) *dbItem {
 	if item.opts != nil && item.opts.ex {
 		// The new item has eviction options. Add it to the
 		// expires tree
-		db.exps.ReplaceOrInsert(item)
+		db.exps.Set(item)
 	}
 	for _, idx := range db.idxs {
 		if !idx.match(item.key) {
@@ -487,7 +485,7 @@ func (db *DB) insertIntoDatabase(item *dbItem) *dbItem {
 		}
 		if idx.btr != nil {
 			// Add new item to btree index.
-			idx.btr.ReplaceOrInsert(item)
+			idx.btr.Set(item)
 		}
 		if idx.rtr != nil {
 			// Add new item to rtree index.
@@ -557,9 +555,9 @@ func (db *DB) backgroundManager() {
 				}
 			}
 			// produce a list of expired items that need removing
-			db.exps.AscendLessThan(&dbItem{
+			btreeAscendLessThan(db.exps, &dbItem{
 				opts: &dbItemOpts{ex: true, exat: time.Now()},
-			}, func(item btree.Item) bool {
+			}, func(item interface{}) bool {
 				expired = append(expired, item.(*dbItem))
 				return true
 			})
@@ -674,8 +672,8 @@ func (db *DB) Shrink() error {
 			}
 			done = true
 			var n int
-			db.keys.AscendGreaterOrEqual(&dbItem{key: pivot},
-				func(item btree.Item) bool {
+			btreeAscendGreaterOrEqual(db.keys, &dbItem{key: pivot},
+				func(item interface{}) bool {
 					dbi := item.(*dbItem)
 					// 1000 items or 64MB buffer
 					if n > 1000 || len(buf) > 64*1024*1024 {
@@ -754,46 +752,65 @@ func (db *DB) Shrink() error {
 	}()
 }
 
-var errValidEOF = errors.New("valid eof")
-
 // readLoad reads from the reader and loads commands into the database.
 // modTime is the modified time of the reader, should be no greater than
 // the current time.Now().
-func (db *DB) readLoad(rd io.Reader, modTime time.Time) error {
+// Returns the number of bytes of the last command read and the error if any.
+func (db *DB) readLoad(rd io.Reader, modTime time.Time) (n int64, err error) {
+	defer func() {
+		if err == io.EOF {
+			err = io.ErrUnexpectedEOF
+		}
+	}()
+	totalSize := int64(0)
 	data := make([]byte, 4096)
 	parts := make([]string, 0, 8)
 	r := bufio.NewReader(rd)
 	for {
+		// peek at the first byte. If it's a 'nul' control character then
+		// ignore it and move to the next byte.
+		c, err := r.ReadByte()
+		if err != nil {
+			if err == io.EOF {
+				err = nil
+			}
+			return totalSize, err
+		}
+		if c == 0 {
+			// ignore nul control characters
+			n += 1
+			continue
+		}
+		if err := r.UnreadByte(); err != nil {
+			return totalSize, err
+		}
+
 		// read a single command.
 		// first we should read the number of parts that the of the command
+		cmdByteSize := int64(0)
 		line, err := r.ReadBytes('\n')
 		if err != nil {
-			if len(line) > 0 {
-				// got an eof but also data. this should be an unexpected eof.
-				return io.ErrUnexpectedEOF
-			}
-			if err == io.EOF {
-				break
-			}
-			return err
+			return totalSize, err
 		}
 		if line[0] != '*' {
-			return ErrInvalid
+			return totalSize, ErrInvalid
 		}
+		cmdByteSize += int64(len(line))
+
 		// convert the string number to and int
 		var n int
 		if len(line) == 4 && line[len(line)-2] == '\r' {
 			if line[1] < '0' || line[1] > '9' {
-				return ErrInvalid
+				return totalSize, ErrInvalid
 			}
 			n = int(line[1] - '0')
 		} else {
 			if len(line) < 5 || line[len(line)-2] != '\r' {
-				return ErrInvalid
+				return totalSize, ErrInvalid
 			}
 			for i := 1; i < len(line)-2; i++ {
 				if line[i] < '0' || line[i] > '9' {
-					return ErrInvalid
+					return totalSize, ErrInvalid
 				}
 				n = n*10 + int(line[i]-'0')
 			}
@@ -804,25 +821,26 @@ func (db *DB) readLoad(rd io.Reader, modTime time.Time) error {
 			// read the number of bytes of the part.
 			line, err := r.ReadBytes('\n')
 			if err != nil {
-				return err
+				return totalSize, err
 			}
 			if line[0] != '$' {
-				return ErrInvalid
+				return totalSize, ErrInvalid
 			}
+			cmdByteSize += int64(len(line))
 			// convert the string number to and int
 			var n int
 			if len(line) == 4 && line[len(line)-2] == '\r' {
 				if line[1] < '0' || line[1] > '9' {
-					return ErrInvalid
+					return totalSize, ErrInvalid
 				}
 				n = int(line[1] - '0')
 			} else {
 				if len(line) < 5 || line[len(line)-2] != '\r' {
-					return ErrInvalid
+					return totalSize, ErrInvalid
 				}
 				for i := 1; i < len(line)-2; i++ {
 					if line[i] < '0' || line[i] > '9' {
-						return ErrInvalid
+						return totalSize, ErrInvalid
 					}
 					n = n*10 + int(line[i]-'0')
 				}
@@ -836,33 +854,34 @@ func (db *DB) readLoad(rd io.Reader, modTime time.Time) error {
 				data = make([]byte, dataln)
 			}
 			if _, err = io.ReadFull(r, data[:n+2]); err != nil {
-				return err
+				return totalSize, err
 			}
 			if data[n] != '\r' || data[n+1] != '\n' {
-				return ErrInvalid
+				return totalSize, ErrInvalid
 			}
 			// copy string
 			parts = append(parts, string(data[:n]))
+			cmdByteSize += int64(n + 2)
 		}
 		// finished reading the command
 
 		if len(parts) == 0 {
 			continue
 		}
-		if (parts[0][0] == 's' || parts[0][1] == 'S') &&
+		if (parts[0][0] == 's' || parts[0][0] == 'S') &&
 			(parts[0][1] == 'e' || parts[0][1] == 'E') &&
 			(parts[0][2] == 't' || parts[0][2] == 'T') {
 			// SET
 			if len(parts) < 3 || len(parts) == 4 || len(parts) > 5 {
-				return ErrInvalid
+				return totalSize, ErrInvalid
 			}
 			if len(parts) == 5 {
 				if strings.ToLower(parts[3]) != "ex" {
-					return ErrInvalid
+					return totalSize, ErrInvalid
 				}
-				ex, err := strconv.ParseInt(parts[4], 10, 64)
+				ex, err := strconv.ParseUint(parts[4], 10, 64)
 				if err != nil {
-					return err
+					return totalSize, err
 				}
 				now := time.Now()
 				dur := (time.Duration(ex) * time.Second) - now.Sub(modTime)
@@ -879,24 +898,24 @@ func (db *DB) readLoad(rd io.Reader, modTime time.Time) error {
 			} else {
 				db.insertIntoDatabase(&dbItem{key: parts[1], val: parts[2]})
 			}
-		} else if (parts[0][0] == 'd' || parts[0][1] == 'D') &&
+		} else if (parts[0][0] == 'd' || parts[0][0] == 'D') &&
 			(parts[0][1] == 'e' || parts[0][1] == 'E') &&
 			(parts[0][2] == 'l' || parts[0][2] == 'L') {
 			// DEL
 			if len(parts) != 2 {
-				return ErrInvalid
+				return totalSize, ErrInvalid
 			}
 			db.deleteFromDatabase(&dbItem{key: parts[1]})
-		} else if (parts[0][0] == 'f' || parts[0][1] == 'F') &&
+		} else if (parts[0][0] == 'f' || parts[0][0] == 'F') &&
 			strings.ToLower(parts[0]) == "flushdb" {
-			db.keys = btree.New(btreeDegrees, nil)
-			db.exps = btree.New(btreeDegrees, &exctx{db})
+			db.keys = btree.New(lessCtx(nil))
+			db.exps = btree.New(lessCtx(&exctx{db}))
 			db.idxs = make(map[string]*index)
 		} else {
-			return ErrInvalid
+			return totalSize, ErrInvalid
 		}
+		totalSize += cmdByteSize
 	}
-	return nil
 }
 
 // load reads entries from the append only database file and fills the database.
@@ -909,10 +928,20 @@ func (db *DB) load() error {
 	if err != nil {
 		return err
 	}
-	if err := db.readLoad(db.file, fi.ModTime()); err != nil {
-		return err
+	n, err := db.readLoad(db.file, fi.ModTime())
+	if err != nil {
+		if err == io.ErrUnexpectedEOF {
+			// The db file has ended mid-command, which is allowed but the
+			// data file should be truncated to the end of the last valid
+			// command
+			if err := db.file.Truncate(n); err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
 	}
-	pos, err := db.file.Seek(0, 2)
+	pos, err := db.file.Seek(n, 0)
 	if err != nil {
 		return err
 	}
@@ -1025,8 +1054,8 @@ func (tx *Tx) DeleteAll() error {
 	}
 
 	// now reset the live database trees
-	tx.db.keys = btree.New(btreeDegrees, nil)
-	tx.db.exps = btree.New(btreeDegrees, &exctx{tx.db})
+	tx.db.keys = btree.New(lessCtx(nil))
+	tx.db.exps = btree.New(lessCtx(&exctx{tx.db}))
 	tx.db.idxs = make(map[string]*index)
 
 	// finally re-create the indexes
@@ -1147,7 +1176,25 @@ func (tx *Tx) Commit() error {
 		// Flushing the buffer only once per transaction.
 		// If this operation fails then the write did failed and we must
 		// rollback.
-		if _, err = tx.db.file.Write(tx.db.buf); err != nil {
+		var n int
+		n, err = tx.db.file.Write(tx.db.buf)
+		if err != nil {
+			if n > 0 {
+				// There was a partial write to disk.
+				// We are possibly out of disk space.
+				// Delete the partially written bytes from the data file by
+				// seeking to the previously known position and performing
+				// a truncate operation.
+				// At this point a syscall failure is fatal and the process
+				// should be killed to avoid corrupting the file.
+				pos, err := tx.db.file.Seek(-int64(n), 1)
+				if err != nil {
+					panic(err)
+				}
+				if err := tx.db.file.Truncate(pos); err != nil {
+					panic(err)
+				}
+			}
 			tx.rollbackInner()
 		}
 		if tx.db.config.SyncPolicy == Always {
@@ -1215,7 +1262,7 @@ func appendBulkString(buf []byte, s string) []byte {
 // writeSetTo writes an item as a single SET record to the a bufio Writer.
 func (dbi *dbItem) writeSetTo(buf []byte) []byte {
 	if dbi.opts != nil && dbi.opts.ex {
-		ex := dbi.opts.exat.Sub(time.Now()) / time.Second
+		ex := time.Until(dbi.opts.exat) / time.Second
 		buf = appendArray(buf, 5)
 		buf = appendBulkString(buf, "set")
 		buf = appendBulkString(buf, dbi.key)
@@ -1264,8 +1311,7 @@ func (dbi *dbItem) expiresAt() time.Time {
 // to note that the ctx parameter is used to help with determine which
 // formula to use on an item. Each b-tree should use a different ctx when
 // sharing the same item.
-func (dbi *dbItem) Less(item btree.Item, ctx interface{}) bool {
-	dbi2 := item.(*dbItem)
+func (dbi *dbItem) Less(dbi2 *dbItem, ctx interface{}) bool {
 	switch ctx := ctx.(type) {
 	case *exctx:
 		// The expires b-tree formula
@@ -1293,6 +1339,12 @@ func (dbi *dbItem) Less(item btree.Item, ctx interface{}) bool {
 		return true
 	}
 	return dbi.key < dbi2.key
+}
+
+func lessCtx(ctx interface{}) func(a, b interface{}) bool {
+	return func(a, b interface{}) bool {
+		return a.(*dbItem).Less(b.(*dbItem), ctx)
+	}
 }
 
 // Rect converts a string to a rectangle.
@@ -1384,7 +1436,9 @@ func (tx *Tx) Set(key, value string, opts *SetOptions) (previousValue string,
 			// create a rollback entry with a nil value. A nil value indicates
 			// that the entry should be deleted on rollback. When the value is
 			// *not* nil, that means the entry should be reverted.
-			tx.wc.rollbackItems[key] = nil
+			if _, ok := tx.wc.rollbackItems[key]; !ok {
+				tx.wc.rollbackItems[key] = nil
+			}
 		} else {
 			// A previous item already exists in the database. Let's create a
 			// rollback entry with the item as the value. We need to check the
@@ -1475,7 +1529,7 @@ func (tx *Tx) TTL(key string) (time.Duration, error) {
 	} else if item.opts == nil || !item.opts.ex {
 		return -1, nil
 	}
-	dur := item.opts.exat.Sub(time.Now())
+	dur := time.Until(item.opts.exat)
 	if dur < 0 {
 		return 0, ErrNotFound
 	}
@@ -1498,7 +1552,7 @@ func (tx *Tx) scan(desc, gt, lt bool, index, start, stop string,
 		return ErrTxClosed
 	}
 	// wrap a btree specific iterator around the user-defined iterator.
-	iter := func(item btree.Item) bool {
+	iter := func(item interface{}) bool {
 		dbi := item.(*dbItem)
 		return iterator(dbi.key, dbi.val)
 	}
@@ -1542,26 +1596,26 @@ func (tx *Tx) scan(desc, gt, lt bool, index, start, stop string,
 	if desc {
 		if gt {
 			if lt {
-				tr.DescendRange(itemA, itemB, iter)
+				btreeDescendRange(tr, itemA, itemB, iter)
 			} else {
-				tr.DescendGreaterThan(itemA, iter)
+				btreeDescendGreaterThan(tr, itemA, iter)
 			}
 		} else if lt {
-			tr.DescendLessOrEqual(itemA, iter)
+			btreeDescendLessOrEqual(tr, itemA, iter)
 		} else {
-			tr.Descend(iter)
+			btreeDescend(tr, iter)
 		}
 	} else {
 		if gt {
 			if lt {
-				tr.AscendRange(itemA, itemB, iter)
+				btreeAscendRange(tr, itemA, itemB, iter)
 			} else {
-				tr.AscendGreaterOrEqual(itemA, iter)
+				btreeAscendGreaterOrEqual(tr, itemA, iter)
 			}
 		} else if lt {
-			tr.AscendLessThan(itemA, iter)
+			btreeAscendLessThan(tr, itemA, iter)
 		} else {
-			tr.Ascend(iter)
+			btreeAscend(tr, iter)
 		}
 	}
 	return nil
@@ -1816,7 +1870,7 @@ func (tx *Tx) Nearby(index, bounds string,
 		return nil
 	}
 	// // wrap a rtree specific iterator around the user-defined iterator.
-	iter := func(item rtree.Item, dist float64) bool {
+	iter := func(item rtred.Item, dist float64) bool {
 		dbi := item.(*dbItem)
 		return iterator(dbi.key, dbi.val, dist)
 	}
@@ -1854,7 +1908,7 @@ func (tx *Tx) Intersects(index, bounds string,
 		return nil
 	}
 	// wrap a rtree specific iterator around the user-defined iterator.
-	iter := func(item rtree.Item) bool {
+	iter := func(item rtred.Item) bool {
 		dbi := item.(*dbItem)
 		return iterator(dbi.key, dbi.val)
 	}
@@ -2014,7 +2068,8 @@ func (tx *Tx) createIndex(name string, pattern string,
 	if tx.wc.rbkeys == nil {
 		// store the index in the rollback map.
 		if _, ok := tx.wc.rollbackIndexes[name]; !ok {
-			// we use nil to indicate that the index should be removed upon rollback.
+			// we use nil to indicate that the index should be removed upon
+			// rollback.
 			tx.wc.rollbackIndexes[name] = nil
 		}
 	}
@@ -2044,8 +2099,8 @@ func (tx *Tx) DropIndex(name string) error {
 	if tx.wc.rbkeys == nil {
 		// store the index in the rollback map.
 		if _, ok := tx.wc.rollbackIndexes[name]; !ok {
-			// we use a non-nil copy of the index without the data to indicate that the
-			// index should be rebuilt upon rollback.
+			// we use a non-nil copy of the index without the data to indicate
+			// that the index should be rebuilt upon rollback.
 			tx.wc.rollbackIndexes[name] = idx.clearCopy()
 		}
 	}
@@ -2180,4 +2235,68 @@ func IndexJSONCaseSensitive(path string) func(a, b string) bool {
 // Desc is a helper function that changes the order of an index.
 func Desc(less func(a, b string) bool) func(a, b string) bool {
 	return func(a, b string) bool { return less(b, a) }
+}
+
+//// Wrappers around btree Ascend/Descend
+
+func bLT(tr *btree.BTree, a, b interface{}) bool { return tr.Less(a, b) }
+func bGT(tr *btree.BTree, a, b interface{}) bool { return tr.Less(b, a) }
+
+// func bLTE(tr *btree.BTree, a, b interface{}) bool { return !tr.Less(b, a) }
+// func bGTE(tr *btree.BTree, a, b interface{}) bool { return !tr.Less(a, b) }
+
+// Ascend
+
+func btreeAscend(tr *btree.BTree, iter func(item interface{}) bool) {
+	tr.Ascend(nil, iter)
+}
+
+func btreeAscendLessThan(tr *btree.BTree, pivot interface{},
+	iter func(item interface{}) bool,
+) {
+	tr.Ascend(nil, func(item interface{}) bool {
+		return bLT(tr, item, pivot) && iter(item)
+	})
+}
+
+func btreeAscendGreaterOrEqual(tr *btree.BTree, pivot interface{},
+	iter func(item interface{}) bool,
+) {
+	tr.Ascend(pivot, iter)
+}
+
+func btreeAscendRange(tr *btree.BTree, greaterOrEqual, lessThan interface{},
+	iter func(item interface{}) bool,
+) {
+	tr.Ascend(greaterOrEqual, func(item interface{}) bool {
+		return bLT(tr, item, lessThan) && iter(item)
+	})
+}
+
+// Descend
+
+func btreeDescend(tr *btree.BTree, iter func(item interface{}) bool) {
+	tr.Descend(nil, iter)
+}
+
+func btreeDescendGreaterThan(tr *btree.BTree, pivot interface{},
+	iter func(item interface{}) bool,
+) {
+	tr.Descend(nil, func(item interface{}) bool {
+		return bGT(tr, item, pivot) && iter(item)
+	})
+}
+
+func btreeDescendRange(tr *btree.BTree, lessOrEqual, greaterThan interface{},
+	iter func(item interface{}) bool,
+) {
+	tr.Descend(lessOrEqual, func(item interface{}) bool {
+		return bGT(tr, item, greaterThan) && iter(item)
+	})
+}
+
+func btreeDescendLessOrEqual(tr *btree.BTree, pivot interface{},
+	iter func(item interface{}) bool,
+) {
+	tr.Descend(pivot, iter)
 }

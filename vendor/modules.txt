@@ -2,7 +2,7 @@
 ## explicit
 github.com/alecthomas/template
 github.com/alecthomas/template/parse
-# github.com/alecthomas/units v0.0.0-20190924025748-f65c72e2690d
+# github.com/alecthomas/units v0.0.0-20210208195552-ff826a37aa15
 ## explicit
 github.com/alecthomas/units
 # github.com/ecc1/gpio v0.0.0-20200212231225-d40e43fcf8f5
@@ -32,53 +32,49 @@ github.com/jdevelop/golang-rpi-extras/rf522/commands
 ## explicit
 github.com/jdevelop/gpio
 github.com/jdevelop/gpio/rpi
-# github.com/konsorten/go-windows-terminal-sequences v1.0.3
-github.com/konsorten/go-windows-terminal-sequences
-# github.com/kr/pretty v0.1.0
-## explicit
 # github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
 ## explicit
 github.com/nfnt/resize
-# github.com/sirupsen/logrus v1.6.0
+# github.com/sirupsen/logrus v1.8.1
 ## explicit
 github.com/sirupsen/logrus
-# github.com/tidwall/btree v0.0.0-20191029221954-400434d76274
+# github.com/tidwall/btree v0.4.2
 github.com/tidwall/btree
-# github.com/tidwall/buntdb v1.1.2
+# github.com/tidwall/buntdb v1.2.3
 ## explicit
 github.com/tidwall/buntdb
-# github.com/tidwall/gjson v1.6.1
+# github.com/tidwall/gjson v1.7.5
 ## explicit
 github.com/tidwall/gjson
-# github.com/tidwall/grect v0.0.0-20161006141115-ba9a043346eb
+# github.com/tidwall/grect v0.1.1
 github.com/tidwall/grect
-# github.com/tidwall/match v1.0.1
+# github.com/tidwall/match v1.0.3
 github.com/tidwall/match
-# github.com/tidwall/pretty v1.0.2
+# github.com/tidwall/pretty v1.1.0
 github.com/tidwall/pretty
-# github.com/tidwall/rtree v0.0.0-20180113144539-6cd427091e0e
-github.com/tidwall/rtree
-github.com/tidwall/rtree/base
-# github.com/tidwall/tinyqueue v0.0.0-20180302190814-1e39f5511563
+# github.com/tidwall/rtred v0.1.2
+github.com/tidwall/rtred
+github.com/tidwall/rtred/base
+# github.com/tidwall/tinyqueue v0.1.1
 github.com/tidwall/tinyqueue
-# golang.org/x/image v0.0.0-20200801110659-972c09e46d76
+# golang.org/x/image v0.0.0-20210220032944-ac19c3e999fb
 ## explicit
 golang.org/x/image/draw
 golang.org/x/image/font
 golang.org/x/image/font/basicfont
 golang.org/x/image/math/f64
 golang.org/x/image/math/fixed
-# golang.org/x/net v0.0.0-20200904194848-62affa334b73
+# golang.org/x/net v0.0.0-20210420210106-798c2154c571
 ## explicit
 golang.org/x/net/html
 golang.org/x/net/html/atom
 golang.org/x/net/html/charset
-# golang.org/x/sys v0.0.0-20200905004654-be1d3432aa8f
+# golang.org/x/sys v0.0.0-20210420205809-ac73e9fd8988
 ## explicit
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/unix
-# golang.org/x/text v0.3.3
-## explicit
+golang.org/x/sys/windows
+# golang.org/x/text v0.3.6
 golang.org/x/text/encoding
 golang.org/x/text/encoding/charmap
 golang.org/x/text/encoding/htmlindex
@@ -99,11 +95,9 @@ golang.org/x/text/transform
 # gopkg.in/alecthomas/kingpin.v2 v2.2.6
 ## explicit
 gopkg.in/alecthomas/kingpin.v2
-# gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15
-## explicit
 # gopkg.in/yaml.v2 v2.2.5
 ## explicit
-# periph.io/x/periph v3.6.4+incompatible
+# periph.io/x/periph v3.6.7+incompatible
 ## explicit
 periph.io/x/periph
 periph.io/x/periph/conn
