@@ -1,4 +1,4 @@
-//+build pi
+//go:build pi
 
 package ui
 

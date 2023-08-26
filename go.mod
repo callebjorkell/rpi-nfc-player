@@ -1,6 +1,6 @@
 module github.com/callebjorkell/rpi-nfc-player
 
-go 1.19
+go 1.20
 
 require (
 	github.com/ecc1/spi v0.0.0-20200213193041-d21dfe67fe72

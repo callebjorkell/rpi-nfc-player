@@ -15,7 +15,7 @@ const (
 
 type SearchContent struct {
 	Data []struct {
-		Id     int    `json:"id"`
+		Id     uint64 `json:"id"`
 		Type   string `json:"type"`
 		Title  string `json:"title"`
 		Artist struct {
